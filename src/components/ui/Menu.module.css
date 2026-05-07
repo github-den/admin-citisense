@@ -1,0 +1,52 @@
+.menu {
+  min-width: 220px;
+  padding: 6px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-xs);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-sm);
+  transform-origin: top left;
+}
+
+.list {
+  display: grid;
+  gap: 2px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--ui-text);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  outline: none;
+}
+
+.item span {
+  flex: 1;
+  text-align: left;
+}
+
+.item:hover,
+.item:focus {
+  background: var(--ui-surface-hover);
+}
+
+.itemActive {
+  background: var(--brand-soft);
+  color: var(--ui-accent);
+}
+
+.divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--ui-border);
+}

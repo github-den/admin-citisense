@@ -1,0 +1,124 @@
+:root {
+  color-scheme: light;
+
+  /* === CitiSense Brand Colors === */
+  --brand: #1d4ed8;
+  --brand-2: #1e40af;
+  --brand-3: #2563eb;
+  --brand-soft: #e9f0ff;
+  --brand-light: #f5f8ff;
+  --brand-glow: rgba(37, 99, 235, 0.16);
+  --accent: #0891b2;
+  --accent-soft: #ecfeff;
+  --purple: #7c3aed;
+  --purple-soft: #f5f3ff;
+  --green: #16a34a;
+  --green-light: #ecfdf5;
+  --red: #dc2626;
+  --red-light: #fef2f2;
+  --yellow: #d97706;
+  --yellow-light: #fff7e8;
+
+  /* === Text Colors === */
+  --text: #0f172a;
+  --text-2: #334155;
+  --text-3: #64748b;
+  --text-4: #94a3b8;
+  --text-inverse: #ffffff;
+
+  /* === Background & Surface Colors === */
+  --bg: #ffffff;
+  --bg-soft: #ffffff;
+  --surface: rgba(255, 255, 255, 0.96);
+  --surface-strong: #ffffff;
+  --surface-2: #f8fafc;
+  --surface-3: #f1f6fd;
+  --surface-4: #e8f0fb;
+  --surface-glass: rgba(255, 255, 255, 0.78);
+  --panel: rgba(255, 255, 255, 0.9);
+  --panel-strong: rgba(255, 255, 255, 0.96);
+  --border: #d8e3f0;
+  --border-soft: rgba(216, 227, 240, 0.72);
+  --border-strong: #c4d3e4;
+
+  /* === UI System Colors === */
+  --ui-bg: #ffffff;
+  --ui-surface: #ffffff;
+  --ui-surface-strong: #ffffff;
+  --ui-surface-subtle: #f8fafc;
+  --ui-surface-hover: #f4f8ff;
+  --ui-border: #d8e3f0;
+  --ui-border-strong: #bfd0e6;
+  --ui-text: #0f172a;
+  --ui-text-muted: #475569;
+  --ui-text-subtle: #64748b;
+  --ui-accent: #1d4ed8;
+  --ui-accent-strong: #1e40af;
+  --ui-accent-foreground: #ffffff;
+  --ui-support: #0891b2;
+  --ui-secondary: #7c3aed;
+
+  /* === Shadows === */
+  --shadow-xs: 0 4px 14px rgba(15, 23, 42, 0.05);
+  --shadow-sm: 0 12px 30px rgba(15, 23, 42, 0.07);
+  --shadow-md: 0 20px 54px rgba(15, 23, 42, 0.12);
+  --shadow-lg: 0 28px 84px rgba(15, 23, 42, 0.16);
+
+  /* === Border Radius System (Standardized) === */
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* === Typography === */
+  --font: var(--font-inter), Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+
+  /* === Layout Dimensions === */
+  --nav-h: 74px;
+  --header-h: 56px;
+  --shell-gutter: 12.5%;
+  --shell-gutter-tablet: 8%;
+  --shell-content-gap: calc(var(--header-h) / 2);
+  --sidebar-w: 300px;
+  --sidebar-w-compact: 76px;
+  --feed-w: 820px;
+  --aside-w: 420px;
+
+  /* === Animation === */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ring: 0 0 0 4px rgba(29, 78, 216, 0.12);
+
+  /* === shadcn-compatible CSS Variables === */
+  --background: var(--ui-bg);
+  --foreground: var(--ui-text);
+  
+  --card: var(--ui-surface);
+  --card-foreground: var(--ui-text);
+  
+  --popover: var(--ui-surface-strong);
+  --popover-foreground: var(--ui-text);
+  
+  --primary: var(--ui-accent);
+  --primary-foreground: var(--ui-accent-foreground);
+  
+  --secondary: var(--ui-surface-subtle);
+  --secondary-foreground: var(--ui-text);
+  
+  --muted: var(--ui-surface-subtle);
+  --muted-foreground: var(--ui-text-subtle);
+  
+  --accent: var(--ui-accent);
+  --accent-foreground: var(--ui-accent-foreground);
+  
+  --destructive: var(--red);
+  --destructive-foreground: #ffffff;
+  
+  --border: var(--ui-border);
+  --input: var(--ui-border);
+  --ring: var(--ui-accent);
+  
+  --radius: var(--radius-md);
+}

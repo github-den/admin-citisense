@@ -1,0 +1,94 @@
+.wrap {
+  overflow: hidden;
+  border: 1px solid rgba(219, 228, 239, 0.95);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--shadow-xs);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 13px 16px;
+  text-align: left;
+  font-weight: 850;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: linear-gradient(180deg, #f8fbff, var(--surface-2));
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.tr {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.14s var(--ease-out);
+}
+
+.tr:last-child {
+  border-bottom: none;
+}
+
+.tr:hover {
+  background: #f8fbff;
+}
+
+.td {
+  padding: 13px 16px;
+  color: var(--text);
+  vertical-align: middle;
+  font-weight: 620;
+}
+
+.state {
+  min-height: 220px;
+  padding: 64px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 3px solid var(--surface-2);
+  border-top-color: var(--brand);
+  animation: spin 0.75s linear infinite;
+}
+
+.emptyDot {
+  width: 42px;
+  height: 42px;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(24,71,240,0.24), transparent 34%),
+    var(--brand-light);
+  border: 1px solid rgba(24,71,240,0.12);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 760px) {
+  .wrap {
+    border-radius: 0;
+    border-inline: 0;
+    overflow-x: auto;
+  }
+}

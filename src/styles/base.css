@@ -1,0 +1,143 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  text-size-adjust: 100%;
+  scrollbar-width: auto;
+  scrollbar-color: rgba(24, 71, 240, 0.68) rgba(234, 241, 252, 0.92);
+}
+
+body {
+  min-width: 320px;
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.55;
+  background: #ffffff;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(29, 78, 216, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(29, 78, 216, 0.04) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.48) 42%, transparent 86%);
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% -18%, rgba(255, 255, 255, 0.72), transparent 32%);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  line-height: 1.45;
+}
+
+button {
+  cursor: pointer;
+  border: 0;
+  background: none;
+  color: inherit;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+input,
+select,
+textarea {
+  color: var(--text);
+  background: var(--surface-strong);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-3);
+  opacity: 1;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+a {
+  color: inherit;
+}
+
+::selection {
+  background: rgba(24, 71, 240, 0.16);
+}
+
+::-webkit-scrollbar {
+  width: 16px;
+  height: 14px;
+}
+
+::-webkit-scrollbar-button,
+::-webkit-scrollbar-button:single-button {
+  width: 0;
+  height: 0;
+  display: none;
+  background: transparent;
+}
+
+::-webkit-scrollbar-track {
+  background:
+    linear-gradient(180deg, rgba(235, 241, 252, 0.82), rgba(244, 247, 252, 0.92));
+}
+
+::-webkit-scrollbar-track-piece {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(24, 71, 240, 0.74), rgba(52, 112, 255, 0.7));
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(24, 71, 240, 0.88), rgba(52, 112, 255, 0.84));
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+* {
+  scrollbar-width: auto;
+  scrollbar-color: rgba(24, 71, 240, 0.68) rgba(234, 241, 252, 0.92);
+}

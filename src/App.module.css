@@ -1,0 +1,258 @@
+.shell {
+  min-height: 100vh;
+  width: 100%;
+  position: relative;
+  background: #ffffff;
+  isolation: isolate;
+  --sticky-stack-h: var(--header-h);
+  --shell-top-gap: 16px;
+}
+
+.shell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background: none;
+}
+
+.shell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(29, 78, 216, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(29, 78, 216, 0.04) 1px, transparent 1px);
+  background-size: 38px 38px;
+}
+
+.headerStack {
+  position: sticky;
+  top: 0;
+  z-index: 140;
+  width: 100%;
+}
+
+.headerStackSingle {
+  --sticky-stack-h: var(--header-h);
+}
+
+.headerStackWithSubheader {
+  --sticky-stack-h: var(--header-h);
+}
+
+.subheaderBar {
+  display: none;
+}
+
+.subheaderInner {
+  min-height: var(--header-h);
+  padding-inline: var(--shell-gutter);
+  display: flex;
+  align-items: center;
+}
+
+.subheaderTabs {
+  min-height: var(--header-h);
+}
+
+.subheaderTabs button[role='tab'] {
+  min-height: var(--header-h);
+}
+
+.subheaderTabs button[role='tab'] span::after {
+  bottom: -1px;
+}
+
+.content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  justify-content: stretch;
+  align-items: start;
+  gap: var(--shell-content-gap);
+  position: relative;
+  padding: var(--shell-top-gap) var(--shell-gutter) 28px;
+  isolation: isolate;
+}
+
+.contentWide {
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
+}
+
+.contentPlain {
+  padding-inline: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.contentPlain::before,
+.contentPlain::after {
+  display: none;
+}
+
+.mainFrame,
+.asideFrame {
+  position: relative;
+  min-width: 0;
+}
+
+.asideFrame {
+  position: sticky;
+  align-self: start;
+  top: calc(var(--sticky-stack-h) + var(--shell-top-gap));
+}
+
+.mainFrame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 26px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(248, 251, 255, 0.46));
+  border: 1px solid rgba(216, 227, 240, 0.76);
+  box-shadow:
+    0 20px 52px rgba(15, 23, 42, 0.06);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.mainFrameWide::before {
+  display: none;
+}
+
+.mainFrameNoSurface::before {
+  display: none;
+}
+
+.mainCol {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  min-width: 0;
+  min-height: 100vh;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(248, 251, 255, 0.64));
+  border: 1px solid rgba(216, 227, 240, 0.88);
+  border-radius: 24px;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.06);
+  overflow: clip;
+}
+
+.mainColWide {
+  min-height: 100vh;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+  overflow: visible;
+}
+
+.mainColNoSurface {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+  overflow: visible;
+  min-height: 0;
+}
+
+.mainColNoSurface > * > :first-child {
+  margin-top: 0;
+}
+
+.mainColPlain {
+  background: transparent;
+  border-left: 0;
+  border-right: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+
+@media (max-width: 1280px) {
+  .subheaderInner {
+    padding-inline: var(--shell-gutter-tablet);
+  }
+
+  .content {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+    gap: var(--shell-content-gap);
+    padding-top: var(--shell-top-gap);
+    padding-inline: var(--shell-gutter-tablet);
+  }
+
+  .contentWide {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}
+
+@media (min-width: 1680px) {
+  .content {
+    grid-template-columns: minmax(0, 1fr) minmax(390px, 430px);
+    gap: var(--shell-content-gap);
+  }
+
+  .contentWide {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}
+
+@media (max-width: 1100px) {
+  .content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .contentWide {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .shell {
+    height: auto;
+    min-height: 100vh;
+    /* Reserve space for both fixed MobileHeader and bottom MobileNav */
+    padding-top: 52px; /* MobileHeader main bar (tabs add to this dynamically) */
+  }
+
+  .shell[data-has-tabs='true'] {
+    padding-top: 92px; /* 52px header + 40px tab strip */
+  }
+
+  .headerStack {
+    position: static;
+    /* Desktop TopHeader is hidden on mobile via its own CSS */
+  }
+
+  .subheaderBar[data-mobile-only='true'] {
+    display: none; /* MobileHeader now handles the tab strip on mobile */
+  }
+
+  .content {
+    padding: 0 10px var(--nav-h);
+  }
+
+  .mainCol {
+    min-height: calc(100vh - var(--nav-h));
+  }
+
+  .mainFrame::before {
+    inset: 8px 0;
+    border-radius: 22px;
+  }
+
+  .content::after {
+    background-size: 30px 30px;
+  }
+}
+
+.shellPlain {
+  background: var(--ui-bg);
+}
+
+.shellBlank {
+  background: white;
+}

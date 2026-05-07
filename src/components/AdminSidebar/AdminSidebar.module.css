@@ -1,0 +1,160 @@
+.sidebar {
+  grid-area: left;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  border-right: 1px solid rgba(219, 228, 239, 0.9);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  padding: 24px 14px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow-y: auto;
+}
+
+.top {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.bottom {
+  flex-shrink: 0;
+  padding-top: 4px;
+}
+
+.logoWrap {
+  padding: 0 12px 14px;
+  margin-bottom: 12px;
+}
+
+.logoRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logoMark {
+  font-size: 31px;
+  font-weight: 900;
+  letter-spacing: -1.35px;
+  color: var(--brand);
+  line-height: 1;
+}
+
+.adminBadge {
+  font-size: 10px;
+  font-weight: 850;
+  background: #0f172a;
+  color: #fff;
+  border-radius: 999px;
+  padding: 4px 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  align-self: flex-end;
+  margin-bottom: 3px;
+}
+
+.logoSub {
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-top: 5px;
+}
+
+.navLinks {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+  margin: 10px 12px;
+}
+
+.logoutBtn {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  font-size: 16px;
+  font-weight: 760;
+  color: var(--text-2);
+  transition: background 0.16s var(--ease-out), color 0.16s var(--ease-out), transform 0.16s var(--ease-out);
+}
+
+.logoutBtn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  transform: translateX(2px);
+}
+
+.ni {
+  width: 26px;
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+@media (max-width: 1100px) {
+  .sidebar {
+    padding: 18px 8px 16px;
+    align-items: center;
+  }
+
+  .logoWrap {
+    padding: 0;
+    margin-bottom: 16px;
+  }
+
+  .logoMark {
+    font-size: 0;
+  }
+
+  .logoMark::before {
+    content: 'c.';
+    font-size: 22px;
+    color: var(--brand);
+    font-weight: 900;
+  }
+
+  .adminBadge,
+  .logoSub {
+    display: none;
+  }
+
+  .logoutBtn {
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    padding: 0;
+  }
+
+  .logoutBtn:hover {
+    transform: none;
+  }
+
+  .logoutBtn span:last-child {
+    display: none;
+  }
+
+  .divider {
+    margin: 7px 0;
+  }
+}
+
+@media (max-width: 580px) {
+  .sidebar {
+    display: none;
+  }
+}

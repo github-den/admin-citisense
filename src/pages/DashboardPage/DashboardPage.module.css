@@ -1,0 +1,132 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1320px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 4px 2px;
+}
+
+.title {
+  font-size: clamp(26px, 3vw, 34px);
+  font-weight: 950;
+  color: var(--text);
+  letter-spacing: -0.9px;
+}
+
+.sub {
+  font-size: 14px;
+  color: var(--text-2);
+  font-weight: 650;
+}
+
+.liveBadge {
+  padding: 9px 12px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #16a34a;
+  border: 1px solid rgba(22,163,74,0.16);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.opsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.opsCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255,255,255,0.9);
+  border: 1px solid rgba(219,228,239,0.95);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-xs);
+}
+
+.opsCard span {
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 800;
+  flex: 1;
+}
+
+.opsCard strong {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 950;
+}
+
+.chartsRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  gap: 14px;
+}
+
+.chartCard,
+.chartCardFull {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(219, 228, 239, 0.95);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-xs);
+}
+
+.chartTitle {
+  font-size: 14px;
+  font-weight: 850;
+  color: var(--text);
+  margin-bottom: 16px;
+  letter-spacing: -0.08px;
+}
+
+@media (max-width: 1180px) {
+  .statsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .chartsRow {
+    grid-template-columns: 1fr;
+  }
+
+  .opsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 580px) {
+  .page {
+    gap: 14px;
+  }
+
+  .header {
+    padding: 20px 16px 0;
+  }
+
+  .statsGrid {
+    grid-template-columns: 1fr;
+    padding: 0 10px;
+  }
+
+  .chartCard,
+  .chartCardFull {
+    border-radius: 0;
+    border-inline: 0;
+  }
+}

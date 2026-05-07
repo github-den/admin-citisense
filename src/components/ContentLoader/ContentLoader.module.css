@@ -1,0 +1,79 @@
+.standalone,
+.overlay {
+  display: grid;
+  place-items: center;
+}
+
+.standalone {
+  min-height: calc(100vh - 64px);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  background:
+    linear-gradient(180deg, rgba(245, 248, 252, 0.9), rgba(245, 248, 252, 0.94));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.loaderCard {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+}
+
+.logoWrap {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  animation: floatPulse 1.25s ease-in-out infinite;
+}
+
+.logoRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logoMark {
+  color: var(--brand);
+  font-size: 38px;
+  font-weight: 980;
+  line-height: 1;
+  letter-spacing: -0.06em;
+}
+
+.logoSub {
+  font-size: 11px;
+  color: var(--text-3);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.brandLockup {
+  text-align: center;
+  margin-top: 16px;
+}
+
+.brandSub {
+  margin-top: 0;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@keyframes floatPulse {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-4px);
+  }
+}

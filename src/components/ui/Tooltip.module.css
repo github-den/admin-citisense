@@ -1,0 +1,18 @@
+.trigger {
+  position: relative;
+  display: inline-flex;
+}
+
+.tooltip {
+  z-index: 160;
+  min-width: max-content;
+  max-width: 240px;
+  padding: 6px 9px;
+  border-radius: 6px;
+  background: var(--ui-text);
+  color: var(--ui-accent-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  box-shadow: var(--shadow-sm);
+}
