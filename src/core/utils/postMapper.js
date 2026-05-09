@@ -41,6 +41,9 @@ function normalizeFeedbackNo(row) {
 export function mapPost(row) {
   const profile = row?.profiles ?? {};
   const username = profile.username || 'citizen';
+  const reactionSummary = row?.reactionSummary ?? null;
+  const reactionBreakdown = reactionSummary?.breakdown ?? row?.reaction_breakdown ?? null;
+  const reactsCount = reactionSummary?.total ?? row?.reacts_count ?? 0;
 
   return {
     id: row.id,
@@ -56,7 +59,7 @@ export function mapPost(row) {
     raisedByMe: !!row.raisedByMe,
     followedByMe: !!row.followedByMe,
     discuss: row.discuss_count ?? row.comments_count ?? 0,
-    reacts: row.reacts_count ?? 0,
+    reacts: reactsCount,
     saves: row.bookmarks_count ?? row.saves_count ?? row.save_count ?? 0,
 
     status: normalizeStatus(row),
@@ -71,6 +74,14 @@ export function mapPost(row) {
     closedAt: row.closed_at ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    reactBreakdown: reactionBreakdown,
+    reactionSummary,
+    finalMood: row.final_mood ?? reactionSummary?.mood ?? null,
+    moodConfidence: Number(row.mood_confidence ?? reactionSummary?.confidence ?? 0),
+    moodSource: row.mood_source ?? reactionSummary?.source ?? 'none',
+    predictedMood: row.predicted_mood ?? null,
+    predictedMoodConfidence: Number(row.predicted_mood_confidence ?? 0),
+    predictionModelVersion: row.prediction_model_version ?? null,
     // Preservation of hydrated states
     myReaction: row.myReaction ?? null,
     raisedByMe: !!(row.raisedByMe ?? row.raised_by_me),

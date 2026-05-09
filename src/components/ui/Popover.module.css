@@ -6,6 +6,7 @@
   background: var(--popover);
   color: var(--popover-foreground);
   box-shadow: var(--shadow-sm);
+  z-index: 120;
   animation: fadeIn 140ms var(--ease-out);
 }
 

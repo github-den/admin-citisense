@@ -185,7 +185,8 @@
   line-height: 1.5;
   color: var(--ui-text-muted);
   text-align: left;
-  max-width: 34ch;
+  max-width: none;
+  white-space: nowrap;
 }
 
 @media (max-width: 640px) {

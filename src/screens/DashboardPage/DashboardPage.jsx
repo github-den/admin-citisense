@@ -16,6 +16,7 @@ import DashboardDateRangeFilter from './DashboardDateRangeFilter.jsx';
 import { SERVICE_CATEGORIES, URDANETA_BARANGAYS } from '../../constants/index.js';
 import { useAdminStats } from '@core/hooks/useAdminStats.js';
 import { useAdminWorkspace } from '@core/hooks/useAdminWorkspace.js';
+import { formatMoodLabel, getMoodEmoji, summarizeMoodFromPosts } from '@core/utils/mood.js';
 import {
   buildAiSummary,
   deriveVerificationStatus,
@@ -196,18 +197,15 @@ function getSatisfactionRate(posts) {
 }
 
 function getMoodMetric(posts) {
-  if (!posts.length) {
-    return { value: '\u{1F636}', label: 'No data' };
+  const summary = summarizeMoodFromPosts(posts);
+  if (!summary.mood) {
+    return { value: '\u{1F636}', label: 'No mood data yet' };
   }
 
-  const complaints = posts.filter((post) => normalizeText(post.type) === 'complaint').length;
-  const compliments = posts.filter((post) => normalizeText(post.type) === 'compliment').length;
-  const suggestions = posts.filter((post) => normalizeText(post.type) === 'suggestion').length;
-  const score = ((compliments * 1) + (suggestions * 0.2) - (complaints * 0.85)) / posts.length;
-
-  if (score >= 0.15) return { value: '\u{1F60A}', label: 'Positive' };
-  if (score <= -0.15) return { value: '\u{1F61F}', label: 'Needs attention' };
-  return { value: '\u{1F642}', label: 'Mixed' };
+  return {
+    value: getMoodEmoji(summary.mood),
+    label: formatMoodLabel(summary.mood),
+  };
 }
 
 function buildFeedbacksChart(posts) {
@@ -1279,83 +1277,85 @@ export default function DashboardPage() {
         </article>
       </div>
 
-      <section className={styles.dashboardSection}>
-        <div className={styles.dashboardSectionHeader}>
-          <h2 className={styles.dashboardSectionTitle}>Time-Based Charts</h2>
-        </div>
+      {workspace.isSuperAdmin ? (
+        <section className={styles.dashboardSection}>
+          <div className={styles.dashboardSectionHeader}>
+            <h2 className={styles.dashboardSectionTitle}>Time-Based Charts</h2>
+          </div>
 
-        <div className={styles.dashboardTwinGrid}>
-          <article className={styles.chartCard}>
-            <div className={styles.chartHeader}>
-              <strong className={styles.dashboardChartTitle}>Top 10 Service Categories by Feedback Volume</strong>
-              {renderChartTools('serviceVolume', {
-                filename: 'dashboard-top-service-categories',
-                title: 'Top Service Categories by Feedback Volume',
-                rows: topServiceCategories,
-              })}
-            </div>
-            {activeExplanationKey === 'serviceVolume' ? <div className={styles.summaryBox}>{chartExplanations.serviceVolume}</div> : null}
-            <div className={styles.dashboardLargeChartBody}>
-              <DashboardStackedChart data={topServiceCategories} />
-            </div>
-          </article>
+          <div className={styles.dashboardTwinGrid}>
+            <article className={styles.chartCard}>
+              <div className={styles.chartHeader}>
+                <strong className={styles.dashboardChartTitle}>Top 10 Service Categories by Feedback Volume</strong>
+                {renderChartTools('serviceVolume', {
+                  filename: 'dashboard-top-service-categories',
+                  title: 'Top Service Categories by Feedback Volume',
+                  rows: topServiceCategories,
+                })}
+              </div>
+              {activeExplanationKey === 'serviceVolume' ? <div className={styles.summaryBox}>{chartExplanations.serviceVolume}</div> : null}
+              <div className={styles.dashboardLargeChartBody}>
+                <DashboardStackedChart data={topServiceCategories} />
+              </div>
+            </article>
 
-          <article className={styles.chartCard}>
-            <div className={styles.chartHeader}>
-              <strong className={styles.dashboardChartTitle}>Top 10 Incident Locations by Feedback Volume</strong>
-              {renderChartTools('locationVolume', {
-                filename: 'dashboard-top-incident-locations',
-                title: 'Top Incident Locations by Feedback Volume',
-                rows: topIncidentLocations,
-              })}
-            </div>
-            {activeExplanationKey === 'locationVolume' ? <div className={styles.summaryBox}>{chartExplanations.locationVolume}</div> : null}
-            <div className={styles.dashboardLargeChartBody}>
-              <DashboardStackedChart data={topIncidentLocations} />
-            </div>
-          </article>
-        </div>
+            <article className={styles.chartCard}>
+              <div className={styles.chartHeader}>
+                <strong className={styles.dashboardChartTitle}>Top 10 Incident Locations by Feedback Volume</strong>
+                {renderChartTools('locationVolume', {
+                  filename: 'dashboard-top-incident-locations',
+                  title: 'Top Incident Locations by Feedback Volume',
+                  rows: topIncidentLocations,
+                })}
+              </div>
+              {activeExplanationKey === 'locationVolume' ? <div className={styles.summaryBox}>{chartExplanations.locationVolume}</div> : null}
+              <div className={styles.dashboardLargeChartBody}>
+                <DashboardStackedChart data={topIncidentLocations} />
+              </div>
+            </article>
+          </div>
 
-        <div className={styles.dashboardTwinGrid}>
-          <article className={styles.chartCard}>
-            <div className={styles.chartHeader}>
-              <strong className={styles.dashboardChartTitle}>Top 10 LGU Offices by Performance</strong>
-              {renderChartTools(
-                'officePerformance',
-                {
-                  filename: 'dashboard-top-lgu-offices',
-                  title: 'Top LGU Offices by Performance',
-                  rows: topOfficesByPerformance.map((item) => ({ office: item.name, metric: item.displayValue })),
-                },
-                performanceMetricTrigger,
-              )}
-            </div>
-            {activeExplanationKey === 'officePerformance' ? <div className={styles.summaryBox}>{chartExplanations.officePerformance}</div> : null}
-            <div className={styles.dashboardLargeChartBody}>
-              <DashboardPerformanceChart data={topOfficesByPerformance} metric={performanceMetric} />
-            </div>
-          </article>
+          <div className={styles.dashboardTwinGrid}>
+            <article className={styles.chartCard}>
+              <div className={styles.chartHeader}>
+                <strong className={styles.dashboardChartTitle}>Top 10 LGU Offices by Performance</strong>
+                {renderChartTools(
+                  'officePerformance',
+                  {
+                    filename: 'dashboard-top-lgu-offices',
+                    title: 'Top LGU Offices by Performance',
+                    rows: topOfficesByPerformance.map((item) => ({ office: item.name, metric: item.displayValue })),
+                  },
+                  performanceMetricTrigger,
+                )}
+              </div>
+              {activeExplanationKey === 'officePerformance' ? <div className={styles.summaryBox}>{chartExplanations.officePerformance}</div> : null}
+              <div className={styles.dashboardLargeChartBody}>
+                <DashboardPerformanceChart data={topOfficesByPerformance} metric={performanceMetric} />
+              </div>
+            </article>
 
-          <article className={styles.chartCard}>
-            <div className={styles.chartHeader}>
-              <strong className={styles.dashboardChartTitle}>Top 10 Barangay Offices by Performance</strong>
-              {renderChartTools(
-                'barangayPerformance',
-                {
-                  filename: 'dashboard-top-barangay-offices',
-                  title: 'Top Barangay Offices by Performance',
-                  rows: topBarangaysByPerformance.map((item) => ({ barangay: item.name, metric: item.displayValue })),
-                },
-                performanceMetricTrigger,
-              )}
-            </div>
-            {activeExplanationKey === 'barangayPerformance' ? <div className={styles.summaryBox}>{chartExplanations.barangayPerformance}</div> : null}
-            <div className={styles.dashboardLargeChartBody}>
-              <DashboardPerformanceChart data={topBarangaysByPerformance} metric={performanceMetric} />
-            </div>
-          </article>
-        </div>
-      </section>
+            <article className={styles.chartCard}>
+              <div className={styles.chartHeader}>
+                <strong className={styles.dashboardChartTitle}>Top 10 Barangay Offices by Performance</strong>
+                {renderChartTools(
+                  'barangayPerformance',
+                  {
+                    filename: 'dashboard-top-barangay-offices',
+                    title: 'Top Barangay Offices by Performance',
+                    rows: topBarangaysByPerformance.map((item) => ({ barangay: item.name, metric: item.displayValue })),
+                  },
+                  performanceMetricTrigger,
+                )}
+              </div>
+              {activeExplanationKey === 'barangayPerformance' ? <div className={styles.summaryBox}>{chartExplanations.barangayPerformance}</div> : null}
+              <div className={styles.dashboardLargeChartBody}>
+                <DashboardPerformanceChart data={topBarangaysByPerformance} metric={performanceMetric} />
+              </div>
+            </article>
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

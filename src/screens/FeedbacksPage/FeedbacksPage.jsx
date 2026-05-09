@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarBlank, CaretDown, ChartDonut, Clock, ClockCountdown, DownloadSimple, HandHeart, Lightbulb, MapPin, Star, Tag, Warning, X } from '@phosphor-icons/react';
+import AdminDateRangeFilter from '../../components/ui/AdminDateRangeFilter.jsx';
 import DataTable from '../../components/DataTable/DataTable.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Menu from '../../components/ui/Menu.jsx';
@@ -11,7 +12,6 @@ import { useAdminFeed } from '@core/hooks/useAdminFeed.js';
 import { useAdminReports } from '@core/hooks/useAdminReports.js';
 import { getAdminPosts } from '@core/services/admin.js';
 import {
-  DATE_RANGE_OPTIONS,
   composeStatus,
   deriveResolutionStatus,
   deriveVerificationStatus,
@@ -20,6 +20,7 @@ import {
   normalizeText,
   scopePostsToWorkspace,
 } from '@core/lib/adminWorkspace.js';
+import { createPresetAdminDateRange, isDefaultAdminDateRange } from '@core/lib/adminDateRange.js';
 import { exportRowsToCsv, exportRowsToXlsx } from '@core/lib/exporters.js';
 import { showToast } from '../../components/Toast/Toast.jsx';
 import styles from '../../styles/adminWorkspace.module.css';
@@ -240,7 +241,7 @@ export default function FeedbacksPage() {
   const [verificationFilter, setVerificationFilter] = useState('All');
   const [resolutionFilter, setResolutionFilter] = useState('All');
   const [typeFilter, setTypeFilter] = useState('All');
-  const [dateRange, setDateRange] = useState('all');
+  const [dateRange, setDateRange] = useState(() => createPresetAdminDateRange('all'));
   const [serviceFilter, setServiceFilter] = useState('all');
   const [barangayFilter, setBarangayFilter] = useState('all');
   const [page, setPage] = useState(0);
@@ -257,7 +258,7 @@ export default function FeedbacksPage() {
     || verificationFilter !== 'All'
     || resolutionFilter !== 'All'
     || typeFilter !== 'All'
-    || dateRange !== 'all'
+    || !isDefaultAdminDateRange(dateRange)
     || serviceFilter !== 'all'
     || barangayFilter !== 'all'
   );
@@ -301,12 +302,6 @@ export default function FeedbacksPage() {
     [enrichedPosts],
   );
   const barangayOptions = useMemo(() => URDANETA_BARANGAYS, []);
-  const dateMenuOptions = useMemo(() => {
-    const allTime = DATE_RANGE_OPTIONS.find((option) => option.value === 'all');
-    const others = DATE_RANGE_OPTIONS.filter((option) => option.value !== 'all');
-    return allTime ? [allTime, ...others] : DATE_RANGE_OPTIONS;
-  }, []);
-
   const filteredPosts = useMemo(() => {
     let next = filterByDateRange(enrichedPosts, dateRange);
 
@@ -343,6 +338,7 @@ export default function FeedbacksPage() {
     () => filteredPosts.filter((post) => selectedPostIds.includes(String(post.id))),
     [filteredPosts, selectedPostIds],
   );
+  const feedbacksEmptyLabel = hasActiveFilters ? 'No feedback records match your current filters.' : 'No feedbacks yet';
 
   useEffect(() => {
     setPageInput(String(Math.min(page + 1, totalPages || 1)));
@@ -407,7 +403,7 @@ export default function FeedbacksPage() {
     setVerificationFilter('All');
     setResolutionFilter('All');
     setTypeFilter('All');
-    setDateRange('all');
+    setDateRange(createPresetAdminDateRange('all'));
     setServiceFilter('all');
     setBarangayFilter('all');
     setQuery('');
@@ -669,17 +665,15 @@ export default function FeedbacksPage() {
 
   return (
     <div className={`${styles.page} ${styles.pageWide}`}>
-      <div className={styles.pageHeader}>
+      <div className={`${styles.pageHeader} ${styles.feedbacksHeader}`}>
         <div className={styles.inlineHeaderMeta}>
           <h1 className={styles.pageTitle}>Feedbacks</h1>
-          <span className={styles.headerDivider}>|</span>
-          <span className={styles.headerContext}>{workspace.scopeLabel}</span>
         </div>
         <SearchInput
-          className={styles.searchControl}
+          className={`${styles.searchControl} ${styles.feedbacksSearchControl}`}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search feedbacks"
+          placeholder="Search feedback number"
         />
       </div>
 
@@ -769,19 +763,11 @@ export default function FeedbacksPage() {
               )}
             />
           ) : null}
-          <Menu
+          <AdminDateRangeFilter
+            value={dateRange}
+            onChange={setDateRange}
             align="end"
-            items={createMenuItems(dateMenuOptions, dateRange, setDateRange, (option) => option.value)}
-            trigger={(
-              <Button
-                variant="secondary"
-                size="md"
-                className={`${styles.filterMenuTrigger} ${dateRange !== 'all' ? styles.filterMenuTriggerActive : ''}`}
-              >
-                Date
-                <CaretDown size={12} weight="bold" />
-              </Button>
-            )}
+            className={`${styles.filterMenuTrigger} ${!isDefaultAdminDateRange(dateRange) ? styles.filterMenuTriggerActive : ''}`}
           />
           <Button
             variant="secondary"
@@ -798,35 +784,45 @@ export default function FeedbacksPage() {
       </section>
 
       <section className={styles.tablePanel}>
-        <DataTable columns={columns} rows={pagedPosts} loading={loading} minWidth={900} empty="No feedback records match your current filters." />
+        <DataTable
+          columns={columns}
+          rows={pagedPosts}
+          loading={loading}
+          minWidth={900}
+          empty={feedbacksEmptyLabel}
+          showEmptyTable
+          emptyRowCount={10}
+        />
       </section>
 
-      <div className={styles.resultsFooter}>
-        <div className={styles.pagination}>
-          <button disabled={page === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>Prev</button>
-          <span>Page</span>
-          <input
-            type="text"
-            inputMode="numeric"
-            className={styles.pageInput}
-            value={pageInput}
-            onChange={(event) => setPageInput(event.target.value.replace(/[^\d]/g, '').slice(0, 4))}
-            onBlur={() => setPageInput(String(Math.min(page + 1, totalPages)))}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                commitPageInput(pageInput);
-              }
-            }}
-            aria-label="Go to page"
-          />
-          <span>of {totalPages}</span>
-          <button disabled={page + 1 >= totalPages} onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))}>Next</button>
+      {totalRecords > 0 ? (
+        <div className={styles.resultsFooter}>
+          <div className={styles.pagination}>
+            <button disabled={page === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>Prev</button>
+            <span>Page</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              className={styles.pageInput}
+              value={pageInput}
+              onChange={(event) => setPageInput(event.target.value.replace(/[^\d]/g, '').slice(0, 4))}
+              onBlur={() => setPageInput(String(Math.min(page + 1, totalPages)))}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  commitPageInput(pageInput);
+                }
+              }}
+              aria-label="Go to page"
+            />
+            <span>of {totalPages}</span>
+            <button disabled={page + 1 >= totalPages} onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))}>Next</button>
+          </div>
+          <div className={styles.resultsMeta}>
+            Showing results {pagedPosts.length} out of {totalRecords}
+          </div>
         </div>
-        <div className={styles.resultsMeta}>
-          Showing results {pagedPosts.length} out of {totalRecords}
-        </div>
-      </div>
+      ) : null}
 
       <div className={styles.drawerShell} data-open={selectedPost ? 'true' : 'false'}>
         <button type="button" className={styles.drawerBackdrop} onClick={() => setSelectedPostId(null)} aria-label="Close feedback detail" />

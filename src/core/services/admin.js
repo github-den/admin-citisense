@@ -1,5 +1,6 @@
 import { supabase } from '@core/lib/supabase.js';
 import { mapPosts } from '@core/utils/postMapper.js';
+import { buildReactionSummaryMap } from '@core/utils/mood.js';
 
 const STATUS_TO_DB = {
   'Under Review': 'under_review',
@@ -14,8 +15,53 @@ function isFiniteLimit(limit) {
   return Number.isFinite(limit) && limit > 0;
 }
 
+function chunkItems(items, size = 200) {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
 function normalizeReportType(value) {
-  return String(value ?? '').trim().toLowerCase();
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (['post', 'feedback'].includes(normalized)) return 'feedback';
+  if (['comment', 'discussion'].includes(normalized)) return 'discussion';
+  if (normalized === 'reply') return 'reply';
+  if (['profile', 'user'].includes(normalized)) return 'user';
+  return normalized;
+}
+
+async function fetchIdToUserIdMap(table, ids) {
+  if (!supabase || !ids.length) return new Map();
+
+  const { data, error } = await supabase
+    .from(table)
+    .select('id, user_id')
+    .in('id', ids);
+
+  if (error) {
+    if (isSchemaMismatch(error)) return new Map();
+    throw error;
+  }
+
+  return new Map((data ?? []).map((row) => [String(row.id), row.user_id ?? null]));
+}
+
+async function fetchProfilesById(ids) {
+  if (!supabase || !ids.length) return new Map();
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, username')
+    .in('id', ids);
+
+  if (error) {
+    if (isSchemaMismatch(error)) return new Map();
+    throw error;
+  }
+
+  return new Map((data ?? []).map((row) => [String(row.id), row.username ?? null]));
 }
 
 function isSchemaMismatch(error) {
@@ -27,6 +73,50 @@ function isSchemaMismatch(error) {
     message.includes('does not exist') ||
     message.includes('could not find')
   );
+}
+
+async function fetchReactionSummaryMap(postIds) {
+  if (!supabase || !postIds.length) return new Map();
+
+  const rows = [];
+  await Promise.all(
+    chunkItems(postIds).map(async (chunk) => {
+      const { data, error } = await supabase
+        .from('reactions')
+        .select('post_id, emoji, created_at')
+        .in('post_id', chunk);
+
+      if (error) {
+        if (!isSchemaMismatch(error)) {
+          console.error('Admin reaction summary fetch failed:', error);
+        }
+        return;
+      }
+
+      rows.push(...(data ?? []));
+    }),
+  );
+
+  return buildReactionSummaryMap(rows);
+}
+
+async function attachReactionSummaries(rows = []) {
+  const postIds = rows.map((row) => row?.id).filter(Boolean);
+  if (!postIds.length) return rows;
+
+  const reactionSummaryMap = await fetchReactionSummaryMap(postIds);
+  return rows.map((row) => {
+    const reactionSummary = reactionSummaryMap.get(row.id) ?? null;
+    return {
+      ...row,
+      reacts_count: reactionSummary?.total ?? row.reacts_count ?? 0,
+      reaction_breakdown: reactionSummary?.breakdown ?? row.reaction_breakdown ?? null,
+      final_mood: reactionSummary?.mood ?? row.final_mood ?? null,
+      mood_confidence: reactionSummary?.confidence ?? row.mood_confidence ?? 0,
+      mood_source: reactionSummary?.source ?? row.mood_source ?? 'none',
+      reactionSummary,
+    };
+  });
 }
 
 /* Posts */
@@ -47,7 +137,8 @@ export async function getAdminPosts({ status, type, page = 0, limit } = {}) {
   const { data, count, error } = await query;
   if (error) throw error;
 
-  return { data: mapPosts(data ?? []), count: count ?? 0 };
+  const rowsWithMood = await attachReactionSummaries(data ?? []);
+  return { data: mapPosts(rowsWithMood), count: count ?? 0 };
 }
 
 export async function updatePostStatus(postId, status) {
@@ -114,11 +205,70 @@ export async function getAdminReports() {
     throw error;
   }
 
+  const rows = data ?? [];
+  const postIds = [];
+  const commentIds = [];
+  const profileIds = [];
+  const reporterIds = [];
+
+  rows.forEach((row) => {
+    const normalizedType = normalizeReportType(row.reported_entity_type);
+    const reportedEntityId = row.reported_entity_id ? String(row.reported_entity_id) : null;
+
+    if (row.reporter_id) reporterIds.push(String(row.reporter_id));
+    if (normalizedType === 'user' && reportedEntityId) profileIds.push(reportedEntityId);
+    if (normalizedType === 'feedback' && reportedEntityId) postIds.push(reportedEntityId);
+    if (['discussion', 'reply'].includes(normalizedType) && reportedEntityId) commentIds.push(reportedEntityId);
+  });
+
+  const [postUserIds, commentUserIds] = await Promise.all([
+    fetchIdToUserIdMap('feedbacks', Array.from(new Set(postIds))),
+    fetchIdToUserIdMap('comments', Array.from(new Set(commentIds))),
+  ]);
+
+  const targetUserIds = rows
+    .map((row) => {
+      const normalizedType = normalizeReportType(row.reported_entity_type);
+      const reportedEntityId = row.reported_entity_id ? String(row.reported_entity_id) : null;
+
+      if (!reportedEntityId) return null;
+      if (normalizedType === 'user') return reportedEntityId;
+      if (normalizedType === 'feedback') return postUserIds.get(reportedEntityId) ?? null;
+      if (['discussion', 'reply'].includes(normalizedType)) return commentUserIds.get(reportedEntityId) ?? null;
+      return null;
+    })
+    .filter(Boolean)
+    .map(String);
+
+  const usernamesById = await fetchProfilesById(Array.from(new Set([
+    ...profileIds,
+    ...reporterIds,
+    ...targetUserIds,
+  ])));
+
   return {
-    data: (data ?? []).map((row) => ({
-      ...row,
-      normalizedType: normalizeReportType(row.reported_entity_type),
-    })),
+    data: rows.map((row) => {
+      const normalizedType = normalizeReportType(row.reported_entity_type);
+      const reportedEntityId = row.reported_entity_id ? String(row.reported_entity_id) : null;
+      const targetUserId = normalizedType === 'user'
+        ? reportedEntityId
+        : normalizedType === 'feedback'
+          ? postUserIds.get(reportedEntityId) ?? null
+          : ['discussion', 'reply'].includes(normalizedType)
+            ? commentUserIds.get(reportedEntityId) ?? null
+            : null;
+
+      const reporterUsername = row.reporter_id ? usernamesById.get(String(row.reporter_id)) ?? null : null;
+      const targetUsername = targetUserId ? usernamesById.get(String(targetUserId)) ?? null : null;
+
+      return {
+        ...row,
+        normalizedType,
+        reporterUsername,
+        targetUserId,
+        username: targetUsername ?? reporterUsername,
+      };
+    }),
     count: count ?? 0,
   };
 }
@@ -159,13 +309,15 @@ export async function getAdminStats() {
   if (discussions.error && !isSchemaMismatch(discussions.error)) throw discussions.error;
   if (reports.error && !isSchemaMismatch(reports.error)) throw reports.error;
 
+  const postsWithMood = await attachReactionSummaries(posts.data ?? []);
+
   return {
     totalPosts: posts.count ?? 0,
     totalUsers: users.count ?? 0,
     totalFeedboxes: feedboxes.error ? 0 : (feedboxes.count ?? 0),
     totalDiscussions: discussions.error ? 0 : (discussions.count ?? 0),
     totalReports: reports.error ? 0 : (reports.count ?? 0),
-    posts: mapPosts(posts.data ?? []),
+    posts: mapPosts(postsWithMood),
     users: users.data ?? [],
     feedboxes: feedboxes.error ? [] : (feedboxes.data ?? []),
     discussions: discussions.error ? [] : (discussions.data ?? []),

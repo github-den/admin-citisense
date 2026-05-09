@@ -52,6 +52,10 @@
   background: var(--surface-2);
 }
 
+.trEmpty:hover .td {
+  background: var(--ui-surface);
+}
+
 .td {
   padding: 12px;
   vertical-align: top;
@@ -68,6 +72,21 @@
 
 .td > * {
   min-width: 0;
+}
+
+.emptyTableCell {
+  padding: 0;
+}
+
+.emptyTableContent {
+  min-height: calc(var(--table-placeholder-rows, 10) * 56px);
+  display: grid;
+  place-items: center;
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--ui-text-muted);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .state {

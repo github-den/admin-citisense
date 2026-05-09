@@ -1,5 +1,6 @@
 import { SERVICE_CATEGORY_OPTIONS } from '@/constants/index.js';
 import { USER_ROLES } from './auth/roles.js';
+import { matchesAdminDateRange } from './adminDateRange.js';
 
 export const DATE_RANGE_OPTIONS = [
   { value: '7d', label: 'Last 7 days' },
@@ -87,16 +88,7 @@ export function scopePostsToWorkspace(posts = [], workspace) {
 
 export function filterByDateRange(rows = [], range = 'all', dateKey = 'created_at') {
   if (range === 'all') return rows;
-
-  const days = Number.parseInt(range, 10);
-  if (!Number.isFinite(days)) return rows;
-
-  const now = Date.now();
-  const cutoff = now - (days * 24 * 60 * 60 * 1000);
-  return rows.filter((row) => {
-    const timestamp = Date.parse(row?.[dateKey] ?? '');
-    return Number.isFinite(timestamp) && timestamp >= cutoff;
-  });
+  return rows.filter((row) => matchesAdminDateRange(row?.[dateKey], range));
 }
 
 export function deriveVerificationStatus(status) {
