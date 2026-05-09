@@ -20,7 +20,7 @@ export function resolveRouteAccess({ pathname, session }) {
   if (audience === USER_ROLES.GUEST) {
     return {
       allowed: false,
-      redirectTo: routes.root,
+      redirectTo: routes.login,
       promptLogin: true,
       promptMessage: 'Please sign in with an Admin account.',
     };
@@ -30,7 +30,7 @@ export function resolveRouteAccess({ pathname, session }) {
   if (audience !== 'admin') {
     return {
       allowed: false,
-      redirectTo: routes.root,
+      redirectTo: routes.login,
       promptLogin: true,
       promptMessage: 'Access Denied: Admin role required.',
     };

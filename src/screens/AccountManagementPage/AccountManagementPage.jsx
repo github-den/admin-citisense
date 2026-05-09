@@ -5,9 +5,7 @@ import {
   CheckCircle,
   ClockClockwise,
   DownloadSimple,
-  Eye,
   MapPin,
-  PencilSimple,
   ShieldCheck,
   User,
   UserCircleGear,
@@ -51,6 +49,13 @@ function formatRoleLabel(role) {
   if (role === USER_ROLES.SUPER_ADMIN) return 'Super Admin';
   if (role === USER_ROLES.LGU_ADMIN) return 'LGU Admin';
   if (role === USER_ROLES.BARANGAY_ADMIN) return 'Barangay Admin';
+  return 'Citizen';
+}
+
+function formatAccountTableRoleLabel(role) {
+  if (role === USER_ROLES.SUPER_ADMIN) return 'Super Admin';
+  if (role === USER_ROLES.LGU_ADMIN) return 'LGU Admin';
+  if (role === USER_ROLES.BARANGAY_ADMIN) return 'Brgy Admin';
   return 'Citizen';
 }
 
@@ -452,7 +457,7 @@ export default function AccountManagementPage() {
           onChange={toggleSelectAllVisible}
         />
       ),
-      width: 40,
+      width: 44,
       render: (user) => (
         <input
           type="checkbox"
@@ -466,7 +471,7 @@ export default function AccountManagementPage() {
     {
       key: 'no',
       label: 'NO.',
-      width: 72,
+      width: 68,
       render: (user) => {
         const rowIndex = filteredUsers.findIndex((item) => item.id === user.id);
         const displayNo = rowIndex >= 0 ? String(rowIndex + 1).padStart(3, '0') : '---';
@@ -474,27 +479,31 @@ export default function AccountManagementPage() {
       },
     },
     {
-      key: 'account',
-      label: 'Account',
-      render: (user) => (
-        <div className={styles.cellStack}>
-          <div className={styles.cellTitle}>{user.username || 'Unnamed account'}</div>
-          <div className={styles.cellSub}>{getEmailDisplay(user)}</div>
-        </div>
-      ),
+      key: 'username',
+      label: 'Username',
+      render: (user) => <span className={styles.cellBody}>{user.username || 'Unnamed account'}</span>,
+    },
+    {
+      key: 'email',
+      label: 'Email',
+      render: (user) => <span className={styles.cellBody}>{getEmailDisplay(user)}</span>,
     },
     {
       key: 'role',
       label: 'Role',
-      width: 140,
-      render: (user) => <span className={styles.cellBody}>{formatRoleLabel(user.role)}</span>,
+      width: 112,
+      render: (user) => (
+        <span className={styles.tableCapsuleText}>
+          {formatAccountTableRoleLabel(user.role)}
+        </span>
+      ),
     },
     {
       key: 'status',
       label: 'Status',
-      width: 108,
+      width: 84,
       render: (user) => (
-        <span className={disabledUsers[user.id] ? styles.alertPill : styles.statusPill}>
+        <span className={`${styles.tableCapsuleText} ${disabledUsers[user.id] ? styles.tableStatusDisabled : styles.tableStatusEnabled}`}>
           {disabledUsers[user.id] ? 'Disabled' : 'Enabled'}
         </span>
       ),
@@ -502,21 +511,18 @@ export default function AccountManagementPage() {
     {
       key: 'actions',
       label: 'Actions',
-      width: 136,
+      width: 88,
       render: (user) => (
-        <div className={styles.cellStack}>
-          <Button variant="ghost" size="sm" onClick={() => setSelectedUserId(user.id)}>
-            <Eye size={14} weight="duotone" />
+        <div className={styles.actionColumn}>
+          <button type="button" className={styles.actionLink} onClick={() => setSelectedUserId(user.id)}>
             View logs
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => handleEditUser(user)}>
-            <PencilSimple size={14} weight="duotone" />
+          </button>
+          <button type="button" className={styles.actionLink} onClick={() => handleEditUser(user)}>
             Edit
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => toggleDisabled(user)}>
-            <ShieldCheck size={14} weight="duotone" />
+          </button>
+          <button type="button" className={styles.actionLink} onClick={() => toggleDisabled(user)}>
             {disabledUsers[user.id] ? 'Enable' : 'Disable'}
-          </Button>
+          </button>
         </div>
       ),
     },

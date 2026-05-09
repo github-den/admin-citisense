@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import AdminLayout from './components/AdminLayout/AdminLayout.jsx';
 import DashboardPage from './screens/DashboardPage/DashboardPage.jsx';
 import FeedbacksPage from './screens/FeedbacksPage/FeedbacksPage.jsx';
-import ActivityLogsPage from './screens/ActivityLogsPage/ActivityLogsPage.jsx';
 import AccountManagementPage from './screens/AccountManagementPage/AccountManagementPage.jsx';
 import ReportsPage from './screens/ReportsPage/ReportsPage.jsx';
 import { useAdminWorkspace } from './core/hooks/useAdminWorkspace.js';
@@ -12,7 +11,6 @@ import { deriveVerificationStatus, scopePostsToWorkspace } from './core/lib/admi
 const SCREEN_COMPONENTS = {
   dashboard: DashboardPage,
   feedbacks: FeedbacksPage,
-  activity: ActivityLogsPage,
   accounts: AccountManagementPage,
   reports: ReportsPage,
 };
