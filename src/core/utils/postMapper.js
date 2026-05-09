@@ -1,4 +1,5 @@
 import { formatTime, getInitials } from './format.js';
+import { normalizeIncidentLocationLabel } from './location.js';
 
 const DEFAULT_AVATAR = '/avatars/avatar_1.png';
 
@@ -48,7 +49,7 @@ export function mapPost(row) {
     bg: profile.avatar || DEFAULT_AVATAR,
     user: username,
     handle: username.startsWith('@') ? username : `@${username}`,
-    location: row.location ?? row.incident_location,
+    location: normalizeIncidentLocationLabel(row.location ?? row.incident_location),
     time: formatTime(row.created_at),
     content: row.content ?? row.caption ?? '',
     raises: row.raises_count ?? row.likes_count ?? 0,

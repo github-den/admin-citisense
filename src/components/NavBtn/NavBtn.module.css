@@ -1,36 +1,38 @@
 .navBtn {
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   width: 100%;
-  min-height: 44px;
-  padding: 9px 12px;
-  border-radius: 999px;
-  font-size: 15px;
-  font-weight: 760;
-  color: var(--text-2);
-  transition:
-    background 0.16s var(--ease-out),
-    color 0.16s var(--ease-out),
-    transform 0.16s var(--ease-out),
-    box-shadow 0.16s var(--ease-out);
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  color: var(--ui-text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 100ms var(--ease-out), color 100ms var(--ease-out);
+}
+
+.navBtn[title] {
+  grid-template-columns: 16px;
+  justify-content: center;
+  padding: 0;
 }
 
 .navBtn:hover {
   background: var(--surface-2);
-  color: var(--text);
-  box-shadow: inset 0 0 0 1px rgba(219, 228, 239, 0.92);
+  color: var(--brand);
 }
 
 .navBtn.active {
-  background: rgba(24, 71, 240, 0.08);
+  background: var(--surface-3);
   color: var(--brand);
-  box-shadow: inset 0 0 0 1px rgba(24, 71, 240, 0.14);
 }
 
 .ni {
-  width: 26px;
+  width: 18px;
   display: flex;
   justify-content: center;
   flex-shrink: 0;
@@ -38,39 +40,25 @@
 
 .label {
   min-width: 0;
-  flex: 1;
   text-align: left;
+  line-height: 1.3;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 400;
+  font-family: var(--mono);
+  background: var(--brand-soft);
+  border-radius: var(--radius-sm);
 }
 
 .activeDot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: transparent;
-  box-shadow: none;
-  flex-shrink: 0;
-  transition: background 0.16s var(--ease-out), box-shadow 0.16s var(--ease-out);
-}
-
-.active .activeDot {
-  background: var(--brand);
-  box-shadow: 0 0 0 3px rgba(24, 71, 240, 0.12);
-}
-
-@media (max-width: 1100px) {
-  .navBtn {
-    justify-content: center;
-    width: 48px;
-    height: 48px;
-    padding: 0;
-  }
-
-  .navBtn:hover {
-    transform: none;
-  }
-
-  .label,
-  .activeDot {
-    display: none;
-  }
+  display: none;
 }

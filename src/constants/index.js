@@ -99,7 +99,6 @@ export const PAGES = {
   FOR_LATER:     'forlater',
   DRAFTS:        'drafts',
   WRITE_FB:      'writefb',
-  SETTINGS:      'settings',
   HELP:          'help',
   SEARCH:        'search',
   SETUP:         'setup',

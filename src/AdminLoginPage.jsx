@@ -1,90 +1,116 @@
-import { useState } from 'react';
-import { ShieldCheck, ArrowRight, WarningCircle } from '@phosphor-icons/react';
+import { useEffect, useState } from 'react';
+import { Eye, EyeSlash, WarningCircle } from '@phosphor-icons/react';
 import { useAuth } from '@core/context/AuthContext.jsx';
 import styles from './AdminLoginPage.module.css';
 
 export default function AdminLoginPage() {
   const { handleAdminSignIn } = useAuth();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlOverflowY = html.style.overflowY;
+    const previousHtmlScrollbarGutter = html.style.scrollbarGutter;
+    const previousBodyOverflow = body.style.overflow;
+
+    html.style.overflowY = 'hidden';
+    html.style.scrollbarGutter = 'auto';
+    body.style.overflow = 'hidden';
+
+    return () => {
+      html.style.overflowY = previousHtmlOverflowY;
+      html.style.scrollbarGutter = previousHtmlScrollbarGutter;
+      body.style.overflow = previousBodyOverflow;
+    };
+  }, []);
+
   async function onSubmit(e) {
     e.preventDefault();
-    if (!email || !password || busy) return;
+    if (!identifier || !password || busy) return;
 
     setBusy(true);
     setError('');
 
     try {
-      await handleAdminSignIn(email, password);
-      // Successful login will redirect via window.location for a clean state
+      await handleAdminSignIn(identifier, password);
       window.location.href = '/';
     } catch (err) {
-      setError(err.message || 'Invalid admin credentials');
+      setError(err.message || 'Unable to sign in.');
       setBusy(false);
     }
   }
 
   return (
     <div className={styles.shell}>
-      <div className={styles.card}>
-        <div className={styles.iconWrap}>
-          <ShieldCheck size={32} weight="fill" />
+      <section className={styles.content}>
+        <div className={styles.brandRow}>
+          <span className={styles.wordmark}>citisense</span>
+          <span className={styles.brandDivider} aria-hidden="true" />
+          <span className={styles.platformLabel}>Citizen Feedback Platform</span>
         </div>
-        
-        <div className={styles.content}>
-          <div className={styles.kicker}>Secure Access</div>
-          <h1 className={styles.title}>Admin Workspace</h1>
-          <p className={styles.body}>
-            Sign in with your administrative credentials to access the moderation console and system tools.
-          </p>
 
-          <form className={styles.form} onSubmit={onSubmit}>
-            <div className={styles.inputGroup}>
-              <label htmlFor="admin-email">Administrative Email</label>
-              <input
-                id="admin-email"
-                type="email"
-                placeholder="admin@citisense.ph"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                autoFocus
-                required
-              />
-            </div>
+        <div className={styles.headerCopy}>
+          <h1 className={styles.title}>ADMIN WORKSPACE</h1>
+        </div>
 
-            <div className={styles.inputGroup}>
-              <label htmlFor="admin-password">Password</label>
+        <form className={styles.form} onSubmit={onSubmit}>
+          <div className={styles.inputGroup}>
+            <label htmlFor="admin-identifier">Email or username</label>
+            <input
+              id="admin-identifier"
+              type="text"
+              placeholder="Email or username"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              autoFocus
+              required
+            />
+          </div>
+
+          <div className={styles.inputGroup}>
+            <label htmlFor="admin-password">Password</label>
+            <div className={styles.passwordWrap}>
               <input
                 id="admin-password"
-                type="password"
-                placeholder="••••••••"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
+              <button
+                type="button"
+                className={styles.passwordToggle}
+                onClick={() => setShowPassword((value) => !value)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
+              >
+                {showPassword ? <EyeSlash size={16} weight="bold" /> : <Eye size={16} weight="bold" />}
+              </button>
             </div>
+          </div>
 
-            {error && (
-              <div className={styles.error} role="alert">
-                <WarningCircle size={18} weight="fill" />
-                <span>{error}</span>
-              </div>
-            )}
+          {error && (
+            <div className={styles.error} role="alert">
+              <WarningCircle size={16} weight="fill" />
+              <span>{error}</span>
+            </div>
+          )}
 
-            <button type="submit" className={styles.submitBtn} disabled={busy}>
-              <span>{busy ? 'Authenticating...' : 'Sign in to Console'}</span>
-              {!busy && <ArrowRight size={18} weight="bold" />}
-            </button>
-          </form>
-        </div>
+          <button type="submit" className={styles.submitBtn} disabled={busy}>
+            {busy ? 'Signing in...' : 'Log in'}
+          </button>
+        </form>
 
-        <div className={styles.footer}>
-          <p>CitiSense Governance Platform • v2.0</p>
-        </div>
-      </div>
+        <p className={styles.helperText}>
+          Proceed to the admin office if you&apos;re having trouble logging in.
+        </p>
+      </section>
     </div>
   );
 }

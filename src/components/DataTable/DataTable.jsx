@@ -1,12 +1,16 @@
 import styles from './DataTable.module.css';
 
-export default function DataTable({ columns, rows, loading, empty = 'No data.' }) {
+export default function DataTable({ columns, rows, loading, empty = 'No data.', minWidth = 900 }) {
   if (loading) {
     return (
       <div className={styles.wrap}>
         <div className={styles.state}>
-          <span className={styles.spinner} />
-          <span>Loading records...</span>
+          <div className={styles.skeleton} aria-hidden="true">
+            <div className={styles.skeletonRow} />
+            <div className={styles.skeletonRow} />
+            <div className={styles.skeletonRow} />
+            <div className={styles.skeletonRow} />
+          </div>
         </div>
       </div>
     );
@@ -24,7 +28,7 @@ export default function DataTable({ columns, rows, loading, empty = 'No data.' }
   }
 
   return (
-    <div className={styles.wrap}>
+    <div className={styles.wrap} style={{ ['--table-min-width']: `${minWidth}px` }}>
       <table className={styles.table}>
         <thead>
           <tr>

@@ -1,0 +1,131 @@
+.root {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 280px;
+  padding: 6px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-xs);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-sm);
+  z-index: 80;
+}
+
+.list {
+  display: grid;
+  gap: 2px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--ui-text);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.item:hover {
+  background: var(--ui-surface-hover);
+}
+
+.itemActive {
+  background: var(--brand-soft);
+  color: var(--ui-accent);
+}
+
+.divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--ui-border);
+}
+
+.monthPanel {
+  padding: 8px 4px 4px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.monthLabel {
+  flex: 1;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ui-text);
+}
+
+.yearNavGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.navBtn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--ui-text-muted);
+}
+
+.navBtn:hover {
+  background: var(--ui-surface-hover);
+  color: var(--ui-text);
+}
+
+.navBtn[disabled] {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.monthGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.monthCell {
+  min-height: 34px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ui-text-muted);
+}
+
+.monthCell:hover {
+  background: var(--ui-surface-hover);
+  color: var(--ui-text);
+}
+
+.monthCellActive {
+  background: var(--brand);
+  color: #fff;
+}
+
+.monthCellCurrent {
+  color: var(--ui-accent);
+}
+
+.monthCell[disabled] {
+  opacity: 0.25;
+  cursor: not-allowed;
+}

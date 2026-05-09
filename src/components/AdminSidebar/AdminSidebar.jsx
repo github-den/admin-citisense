@@ -1,50 +1,50 @@
+import { usePathname } from 'next/navigation';
 import { SignOut } from '@phosphor-icons/react';
 import NavBtn from '../NavBtn/NavBtn.jsx';
 import { useAuth } from '@core/context/AuthContext.jsx';
 import styles from './AdminSidebar.module.css';
 
-const NAV = [
-  { key: 'dashboard', icon: 'SquaresFour', label: 'Dashboard'  },
-  { key: 'feedbacks', icon: 'Rows',        label: 'Feedbacks'  },
-  { key: 'users',     icon: 'Users',       label: 'Users'      },
-  { key: 'feedboxes', icon: 'Archive',     label: 'Feedboxes'  },
-  { key: 'analytics', icon: 'ChartBar',    label: 'Analytics'  },
-  { key: 'settings',  icon: 'Gear',        label: 'Settings'   },
-];
-
-export default function AdminSidebar({ page, setPage }) {
+export default function AdminSidebar({ workspace, navBadges = {} }) {
   const { handleSignOut } = useAuth();
+  const pathname = usePathname();
+  const navItems = workspace?.pages ?? [];
 
   return (
     <nav className={styles.sidebar}>
       <div className={styles.top}>
-
-        {/* Logo */}
         <div className={styles.logoWrap}>
           <div className={styles.logoRow}>
             <span className={styles.logoMark}>citisense</span>
-            <span className={styles.adminBadge}>Admin</span>
+            <div className={styles.identityRole}>{workspace?.roleLabel ?? 'Admin'}</div>
           </div>
-          <div className={styles.logoSub}>Admin Dashboard</div>
         </div>
 
-        {/* Nav */}
         <div className={styles.navLinks}>
-          {NAV.map(n => (
-            <NavBtn key={n.key} iconName={n.icon} label={n.label}
-              active={page === n.key} onClick={() => setPage(n.key)} />
-          ))}
+          {navItems.map((item) => {
+            const href = `/${item.key}`;
+            const isActive = pathname === href || (pathname === '/' && item.key === 'dashboard');
+            return (
+              <NavBtn
+                key={item.key}
+                iconName={item.icon}
+                label={item.label}
+                href={href}
+                active={isActive}
+                badgeCount={navBadges[item.key] ?? 0}
+              />
+            );
+          })}
         </div>
-
       </div>
 
-      {/* Bottom — sign out */}
-      <div className={styles.bottom}>
+      <div className={styles.footer}>
         <div className={styles.divider} />
-        <button className={styles.logoutBtn} onClick={handleSignOut}>
-          <span className={styles.ni}><SignOut size={22} /></span>
-          <span>Sign out</span>
-        </button>
+        <div className={styles.accountRow}>
+          <span className={styles.accountName}>{workspace?.displayName ?? 'Admin User'}</span>
+          <button className={styles.logoutIconBtn} onClick={handleSignOut} aria-label="Logout" title="Logout">
+            <span className={styles.ni}><SignOut size={18} /></span>
+          </button>
+        </div>
       </div>
     </nav>
   );

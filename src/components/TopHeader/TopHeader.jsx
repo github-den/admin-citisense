@@ -11,7 +11,6 @@ import {
   Question,
   SignOut,
   UserCircle,
-  GearSix,
 } from '@phosphor-icons/react';
 import { useAuth } from '@core/context/AuthContext.jsx';
 import { notificationItems } from '../../data/notifications.js';
@@ -76,7 +75,6 @@ export default function TopHeader({ page, secondHeader, setPage, setSearchQuery 
     { key: 'profile', label: 'My profile', Icon: UserCircle, onClick: () => setPage('profile') },
     { key: 'drafts', label: 'Drafts', Icon: NotePencil, onClick: () => setPage('drafts') },
     { key: 'forlater', label: 'For later', Icon: BookmarkSimple, onClick: () => setPage('forlater') },
-    { key: 'settings', label: 'Settings', Icon: GearSix, onClick: () => setPage('settings') },
     { key: 'support', label: 'Support', Icon: Question, onClick: () => setPage('help') },
     { key: 'divider-1', type: 'divider' },
     { key: 'logout', label: 'Logout', Icon: SignOut, onClick: handleSignOut },

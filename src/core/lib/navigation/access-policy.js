@@ -11,26 +11,26 @@ export function resolveRouteAccess({ pathname, session }) {
   const normalizedPath = normalizePathname(pathname);
   const audience = getUserAudience(session);
 
-  // 1. Allow access to login page for everyone
-  if (normalizedPath === routes.login) {
+  // 1. Allow access to the public admin entry routes.
+  if (normalizedPath === routes.root || normalizedPath === routes.login) {
     return { allowed: true };
   }
 
-  // 2. If not logged in, redirect to login
+  // 2. If not logged in, send the user back to the public entry screen.
   if (audience === USER_ROLES.GUEST) {
     return {
       allowed: false,
-      redirectTo: routes.login,
+      redirectTo: routes.root,
       promptLogin: true,
       promptMessage: 'Please sign in with an Admin account.',
     };
   }
 
-  // 3. If logged in but NOT an admin, redirect to login (or access denied)
+  // 3. If logged in but NOT an admin, send them back to the public entry screen.
   if (audience !== 'admin') {
     return {
       allowed: false,
-      redirectTo: routes.login,
+      redirectTo: routes.root,
       promptLogin: true,
       promptMessage: 'Access Denied: Admin role required.',
     };

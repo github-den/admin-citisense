@@ -7,6 +7,7 @@
     "dev": "next dev --turbo",
     "build": "next build",
     "start": "next start",
+    "seed:admins": "node scripts/seed-admin-accounts.mjs",
     "seed:citizens": "node scripts/seed-30-email-citizens.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

@@ -1,5 +1,7 @@
 .menu {
-  min-width: 220px;
+  width: max-content;
+  min-width: max-content;
+  max-width: min(420px, calc(100vw - 24px));
   padding: 6px;
   border: 1px solid var(--ui-border);
   border-radius: var(--radius-xs);
@@ -7,11 +9,26 @@
   color: var(--popover-foreground);
   box-shadow: var(--shadow-sm);
   transform-origin: top left;
+  z-index: 80;
+}
+
+.submenu {
+  width: max-content;
+  min-width: max-content;
 }
 
 .list {
   display: grid;
   gap: 2px;
+}
+
+.label {
+  padding: 6px 10px 8px;
+  color: var(--ui-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .item {
@@ -33,6 +50,7 @@
 .item span {
   flex: 1;
   text-align: left;
+  white-space: nowrap;
 }
 
 .item:hover,
@@ -40,9 +58,25 @@
   background: var(--ui-surface-hover);
 }
 
+.subTrigger {
+  position: relative;
+  justify-content: space-between;
+  padding-right: 30px;
+}
+
 .itemActive {
   background: var(--brand-soft);
   color: var(--ui-accent);
+}
+
+.subIndicator {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: currentColor;
+  font-size: 16px;
+  line-height: 1;
 }
 
 .divider {

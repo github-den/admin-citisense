@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { ShieldCheck } from '@phosphor-icons/react';
 import AdminApp from './AdminApp.jsx';
+import AdminLoginPage from './AdminLoginPage.jsx';
 import { useAuth } from '@core/context/AuthContext.jsx';
 import { isAdminRole } from '@core/lib/auth/roles.js';
 import styles from './AdminRoot.module.css';
@@ -12,7 +12,6 @@ function isAdmin(session) {
 
 function AdminGate() {
   const { loading, session } = useAuth();
-  const router = useRouter();
   const [desktopReady, setDesktopReady] = useState(true);
 
   useEffect(() => {
@@ -24,13 +23,8 @@ function AdminGate() {
     return () => mediaQuery.removeEventListener('change', syncDesktopState);
   }, []);
 
-  useEffect(() => {
-    if (!loading && !isAdmin(session)) {
-      router.push('/admin/login');
-    }
-  }, [loading, router, session]);
-
   if (loading) return null;
+  if (!isAdmin(session)) return <AdminLoginPage />;
   if (!desktopReady) {
     return (
       <div className={styles.shell}>
@@ -48,22 +42,7 @@ function AdminGate() {
     );
   }
   if (isAdmin(session)) return <AdminApp />;
-
-  // Final fallback while redirecting
-  return (
-    <div className={styles.shell}>
-      <div className={styles.card}>
-        <div className={styles.iconWrap}>
-          <ShieldCheck size={30} weight="fill" />
-        </div>
-        <div className={styles.kicker}>CitiSense Admin</div>
-        <h1 className={styles.title}>Redirecting to login...</h1>
-        <p className={styles.body}>
-          Please wait while we prepare your secure workspace.
-        </p>
-      </div>
-    </div>
-  );
+  return null;
 }
 
 export default function AdminRoot() {

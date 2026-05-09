@@ -3,9 +3,9 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   border: 1px solid transparent;
-  font-weight: 600;
+  font-weight: 500;
   transition:
     background-color 140ms var(--ease-out),
     border-color 140ms var(--ease-out),
@@ -24,19 +24,19 @@
 }
 
 .sm {
-  min-height: 34px;
+  min-height: 28px;
   padding: 0 12px;
   font-size: 13px;
 }
 
 .md {
-  min-height: 38px;
+  min-height: 36px;
   padding: 0 14px;
   font-size: 14px;
 }
 
 .lg {
-  min-height: 42px;
+  min-height: 36px;
   padding: 0 18px;
   font-size: 14px;
 }
@@ -65,26 +65,26 @@
 }
 
 .duotone {
-  background: var(--brand-soft);
-  border-color: color-mix(in srgb, var(--ui-accent) 54%, white);
-  color: var(--ui-accent);
+  background: var(--surface-2);
+  border-color: var(--ui-border);
+  color: var(--ui-text);
   box-shadow: none;
 }
 
 .duotone:hover {
-  background: color-mix(in srgb, var(--ui-accent) 12%, white);
-  border-color: var(--ui-accent);
-  color: var(--ui-accent-strong);
+  background: var(--ui-surface-hover);
+  border-color: var(--ui-border-strong);
+  color: var(--ui-text);
 }
 
 .outline {
   background: transparent;
-  border-color: color-mix(in srgb, var(--ui-accent) 34%, white);
-  color: var(--ui-accent);
+  border-color: var(--ui-border);
+  color: var(--ui-text-muted);
 }
 
 .outline:hover {
-  background: color-mix(in srgb, var(--ui-accent) 6%, white);
+  background: var(--ui-surface-hover);
 }
 
 .ghost {
@@ -97,6 +97,16 @@
 .ghost:hover {
   background: var(--ui-surface-hover);
   color: var(--ui-text);
+}
+
+.destructive {
+  background: var(--ui-surface);
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.destructive:hover {
+  background: var(--red-light);
 }
 
 .icon {

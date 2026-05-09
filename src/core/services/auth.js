@@ -23,6 +23,71 @@ function noClient() {
   throw new Error('Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your .env file.');
 }
 
+function resolveSeededAdminEmailFromUsername(username) {
+  const normalized = String(username ?? '').trim().toLowerCase();
+  if (!normalized) return null;
+
+  if (normalized === 'super_admin_urdaneta') {
+    return 'superadmin@citisense.local';
+  }
+
+  const lguEmailMap = {
+    lgu_health_admin: 'lgu.health.admin@citisense.local',
+    lgu_infrastructure_admin: 'lgu.infrastructure.admin@citisense.local',
+    lgu_social_welfare_admin: 'lgu.socialwelfare.admin@citisense.local',
+    lgu_environment_admin: 'lgu.environment.admin@citisense.local',
+    lgu_peace_order_admin: 'lgu.peaceorder.admin@citisense.local',
+    lgu_public_facilities_admin: 'lgu.publicfacilities.admin@citisense.local',
+    lgu_economic_services_admin: 'lgu.economicservices.admin@citisense.local',
+    lgu_agriculture_admin: 'lgu.agriculture.admin@citisense.local',
+    lgu_education_admin: 'lgu.education.admin@citisense.local',
+    lgu_housing_admin: 'lgu.housing.admin@citisense.local',
+    lgu_tourism_admin: 'lgu.tourism.admin@citisense.local',
+    lgu_transportation_admin: 'lgu.transportation.admin@citisense.local',
+  };
+
+  if (lguEmailMap[normalized]) {
+    return lguEmailMap[normalized];
+  }
+
+  if (normalized.startsWith('brgy_') && normalized.endsWith('_admin')) {
+    const barangaySlug = normalized
+      .slice('brgy_'.length, -'_admin'.length)
+      .replace(/_/g, '.');
+
+    if (barangaySlug) {
+      return `barangay.${barangaySlug}.admin@citisense.local`;
+    }
+  }
+
+  return null;
+}
+
+async function resolveAdminEmailFromUsername(username) {
+  const seededEmail = resolveSeededAdminEmailFromUsername(username);
+  if (seededEmail) return seededEmail;
+
+  const response = await fetch('/api/auth/admin-identifier', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ username }),
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.error ?? 'No admin account matches that email or username.');
+  }
+
+  const email = String(result.email ?? '').trim().toLowerCase();
+  if (!email) {
+    throw new Error('No admin account matches that email or username.');
+  }
+
+  return email;
+}
+
 function getLinkedProviders(user) {
   const providers = user?.app_metadata?.providers;
   if (Array.isArray(providers) && providers.length > 0) return providers;
@@ -133,8 +198,15 @@ export async function getSession() {
   return enrichSession(data.session ?? null);
 }
 
-export async function signIn(email, password) {
+export async function signIn(identifier, password) {
   if (!supabase) noClient();
+  const cleanIdentifier = String(identifier ?? '').trim().toLowerCase();
+  let email = cleanIdentifier;
+
+  if (!cleanIdentifier.includes('@')) {
+    email = await resolveAdminEmailFromUsername(cleanIdentifier);
+  }
+
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
   return enrichSession(data.session);
@@ -156,7 +228,7 @@ export async function signUp(email, password) {
   if (error) throw error;
 
   if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-    throw new Error('This email is already linked to an existing CitiSense account. If you used Google first, please continue with Google or set a password from Settings.');
+    throw new Error('This email is already linked to an existing CitiSense account. If you used Google first, please continue with Google or recover your password first.');
   }
 
   return enrichSession(data.session);

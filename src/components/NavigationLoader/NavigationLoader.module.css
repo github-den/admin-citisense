@@ -50,15 +50,14 @@
   font-weight: 600;
   letter-spacing: 0.35em;
   text-transform: uppercase;
-  margin-left: 0.35em; /* Balance letter spacing */
+  margin-left: 0.35em;
   opacity: 0.75;
 }
 
 .progressTrack {
   position: absolute;
+  inset-inline: 0;
   bottom: 0;
-  left: 0;
-  width: 100%;
   height: 4px;
   background: rgba(37, 99, 235, 0.04);
   overflow: hidden;
@@ -66,8 +65,8 @@
 
 .progressBar {
   height: 100%;
-  background: var(--ui-accent);
   width: 35%;
+  background: var(--ui-accent);
   animation: progressMove 1.4s infinite ease-in-out;
   border-radius: 0 999px 999px 0;
   box-shadow: 0 0 12px rgba(37, 99, 235, 0.3);

@@ -8,8 +8,9 @@
 }
 
 html {
-  overflow-y: scroll;
-  scrollbar-gutter: stable;
+  overflow-y: auto;
+  overflow-x: auto;
+  scrollbar-gutter: auto;
   text-size-adjust: 100%;
   scrollbar-width: auto;
   scrollbar-color: rgba(24, 71, 240, 0.68) rgba(234, 241, 252, 0.92);

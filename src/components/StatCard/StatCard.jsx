@@ -1,22 +1,30 @@
 import styles from './StatCard.module.css';
 
-export default function StatCard({ label, value, icon: Icon, color = 'var(--brand)', trend }) {
+export default function StatCard({
+  label,
+  value,
+  icon: Icon,
+  color = 'var(--brand)',
+  trend,
+  description = '',
+}) {
   return (
     <div className={styles.card}>
       <div className={styles.top}>
         <span className={styles.label}>{label}</span>
-        {Icon && (
+        {Icon ? (
           <span className={styles.iconWrap} style={{ background: `${color}18` }}>
             <Icon size={18} weight="fill" color={color} />
           </span>
-        )}
+        ) : null}
       </div>
-      <div className={styles.value}>{value ?? '—'}</div>
-      {trend != null && (
+      <div className={styles.value}>{value ?? '-'}</div>
+      {description ? <div className={styles.description}>{description}</div> : null}
+      {trend != null ? (
         <div className={styles.trend} style={{ color: trend >= 0 ? '#16a34a' : '#ef4444' }}>
-          {trend >= 0 ? '▲' : '▼'} {Math.abs(trend)}% from last month
+          {trend >= 0 ? 'Up' : 'Down'} {Math.abs(trend)}% from last month
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

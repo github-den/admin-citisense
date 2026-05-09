@@ -1,7 +1,7 @@
 'use client';
 
-import AdminLoginPage from '../../src/AdminLoginPage.jsx';
+import AdminRoot from '../../src/AdminRoot.jsx';
 
 export default function AdminLoginRoute() {
-  return <AdminLoginPage />;
+  return <AdminRoot />;
 }
