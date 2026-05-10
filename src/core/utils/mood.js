@@ -1,6 +1,6 @@
 export const MOOD_KEYS = ['grateful', 'satisfied', 'sad', 'angry'];
-export const PREDICTION_PUBLIC_THRESHOLD = 0.7;
-export const PREDICTION_INTERNAL_THRESHOLD = 0.55;
+export const PREDICTION_PUBLIC_THRESHOLD = 0.3;
+export const PREDICTION_INTERNAL_THRESHOLD = 0.3;
 
 export const MOOD_LABELS = {
   grateful: 'Grateful',

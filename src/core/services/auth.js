@@ -1,4 +1,5 @@
 import { supabase } from '@core/lib/supabase.js';
+import { isAdminRole } from '@core/lib/auth/roles.js';
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 const AUTH_METHOD_EMAIL = 'email';
@@ -209,7 +210,12 @@ export async function signIn(identifier, password) {
 
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
-  return enrichSession(data.session);
+  const session = await enrichSession(data.session);
+  if (!isAdminRole(session)) {
+    await signOut();
+    throw new Error('Citizen accounts must sign in through the citizen app.');
+  }
+  return session;
 }
 
 export async function signUp(email, password) {

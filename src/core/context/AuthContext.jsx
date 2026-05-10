@@ -58,12 +58,24 @@ export function AuthProvider({ children }) {
 
     withTimeout(getSession().catch(() => null), null).then((nextSession) => {
       if (!mounted) return;
+      if (nextSession && !isAdminRole(nextSession)) {
+        signOut().catch(() => {});
+        setSession(null);
+        setLoading(false);
+        return;
+      }
       setSession(nextSession);
       setLoading(false);
     });
 
     const unsub = onAuthStateChange((nextSession) => {
       if (!mounted) return;
+      if (nextSession && !isAdminRole(nextSession)) {
+        signOut().catch(() => {});
+        setSession(null);
+        setLoading(false);
+        return;
+      }
       setSession(nextSession);
       setLoading(false);
     });
@@ -79,11 +91,6 @@ export function AuthProvider({ children }) {
 
     try {
       const nextSession = await signIn(email, password);
-      if (!isAdminRole(nextSession)) {
-        await signOut();
-        throw new Error('There is no existing admin account that matches.');
-      }
-
       setSession(nextSession);
     } catch (error) {
       throw error;
