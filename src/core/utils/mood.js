@@ -249,6 +249,24 @@ function getPredictedFields(post) {
   };
 }
 
+export function getFinalMoodSummary(post) {
+  const mood = normalizeMood(post?.finalMood ?? post?.final_mood ?? post?.raw?.final_mood ?? null);
+  if (!mood) return null;
+
+  return {
+    mood,
+    label: formatMoodLabel(mood),
+    emoji: getMoodEmoji(mood),
+    confidence: Number(
+      post?.moodConfidence
+      ?? post?.mood_confidence
+      ?? post?.raw?.mood_confidence
+      ?? 0,
+    ),
+    source: post?.moodSource ?? post?.mood_source ?? post?.raw?.mood_source ?? 'none',
+  };
+}
+
 export function getPredictedMoodSummary(post, minimumConfidence = PREDICTION_PUBLIC_THRESHOLD) {
   const predicted = getPredictedFields(post);
   const mood = normalizeMood(predicted.mood);

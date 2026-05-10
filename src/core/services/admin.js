@@ -138,13 +138,14 @@ async function attachReactionSummaries(rows = []) {
   const reactionSummaryMap = await fetchReactionSummaryMap(postIds);
   return rows.map((row) => {
     const reactionSummary = reactionSummaryMap.get(row.id) ?? null;
+    const hasStrongReaction = reactionSummary?.isStrong === true;
     return {
       ...row,
       reacts_count: reactionSummary?.total ?? row.reacts_count ?? 0,
       reaction_breakdown: reactionSummary?.breakdown ?? row.reaction_breakdown ?? null,
-      final_mood: reactionSummary?.mood ?? row.final_mood ?? null,
-      mood_confidence: reactionSummary?.confidence ?? row.mood_confidence ?? 0,
-      mood_source: reactionSummary?.source ?? row.mood_source ?? 'none',
+      final_mood: hasStrongReaction ? reactionSummary?.mood : (row.final_mood ?? null),
+      mood_confidence: hasStrongReaction ? (reactionSummary?.confidence ?? 0) : (row.mood_confidence ?? 0),
+      mood_source: hasStrongReaction ? (reactionSummary?.source ?? 'reactions') : (row.mood_source ?? 'none'),
       reactionSummary,
     };
   });
