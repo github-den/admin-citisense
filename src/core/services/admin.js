@@ -1,6 +1,6 @@
 import { supabase } from '@core/lib/supabase.js';
 import { mapPosts } from '@core/utils/postMapper.js';
-import { buildReactionSummaryMap } from '@core/utils/mood.js';
+import { buildReactionSummaryMap, summarizeMoodFromReactionRows } from '@core/utils/mood.js';
 
 const STATUS_TO_DB = {
   'Under Review': 'under_review',
@@ -98,6 +98,37 @@ async function fetchReactionSummaryMap(postIds) {
   );
 
   return buildReactionSummaryMap(rows);
+}
+
+export async function getScopedMoodSummary({ postIds = [], startAt = null, endAt = null } = {}) {
+  if (!supabase || !postIds.length) {
+    return summarizeMoodFromReactionRows([]);
+  }
+
+  const rows = [];
+  await Promise.all(
+    chunkItems(postIds).map(async (chunk) => {
+      let query = supabase
+        .from('reactions')
+        .select('post_id, emoji, created_at')
+        .in('post_id', chunk);
+
+      if (startAt) query = query.gte('created_at', startAt);
+      if (endAt) query = query.lte('created_at', endAt);
+
+      const { data, error } = await query;
+      if (error) {
+        if (!isSchemaMismatch(error)) {
+          console.error('Admin scoped mood fetch failed:', error);
+        }
+        return;
+      }
+
+      rows.push(...(data ?? []));
+    }),
+  );
+
+  return summarizeMoodFromReactionRows(rows);
 }
 
 async function attachReactionSummaries(rows = []) {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Line, LineChart, Pie, PieChart, ResponsiveContainer, Sector, Tooltip, XAxis, YAxis } from 'recharts';
 import {
   CaretDown,
@@ -16,7 +16,7 @@ import DashboardDateRangeFilter from './DashboardDateRangeFilter.jsx';
 import { SERVICE_CATEGORIES, URDANETA_BARANGAYS } from '../../constants/index.js';
 import { useAdminStats } from '@core/hooks/useAdminStats.js';
 import { useAdminWorkspace } from '@core/hooks/useAdminWorkspace.js';
-import { formatMoodLabel, getMoodEmoji, summarizeMoodFromPosts } from '@core/utils/mood.js';
+import { formatMoodLabel, getMoodEmoji } from '@core/utils/mood.js';
 import {
   buildAiSummary,
   deriveVerificationStatus,
@@ -24,6 +24,7 @@ import {
   normalizeText,
   scopePostsToWorkspace,
 } from '@core/lib/adminWorkspace.js';
+import { getScopedMoodSummary } from '@core/services/admin.js';
 import { exportRowsToCsv, exportRowsToXlsx, exportSectionsToPrint } from '@core/lib/exporters.js';
 import { showToast } from '../../components/Toast/Toast.jsx';
 import styles from '../../styles/adminWorkspace.module.css';
@@ -64,6 +65,40 @@ function getDashboardDateRangeLabel(selection) {
   }
 
   return 'All time';
+}
+
+function getReactionDateWindow(selection) {
+  if (!selection || (selection.kind === 'preset' && selection.value === 'all')) {
+    return { startAt: null, endAt: null };
+  }
+
+  if (selection.kind === 'preset') {
+    const days = Number.parseInt(selection.value, 10);
+    if (!Number.isFinite(days) || days <= 0) {
+      return { startAt: null, endAt: null };
+    }
+
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    const start = new Date(end);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - (days - 1));
+    return {
+      startAt: start.toISOString(),
+      endAt: end.toISOString(),
+    };
+  }
+
+  if (selection.kind === 'month') {
+    const start = new Date(selection.year, selection.month, 1, 0, 0, 0, 0);
+    const end = new Date(selection.year, selection.month + 1, 0, 23, 59, 59, 999);
+    return {
+      startAt: start.toISOString(),
+      endAt: end.toISOString(),
+    };
+  }
+
+  return { startAt: null, endAt: null };
 }
 
 function filterPostsByDashboardDateRange(posts, selection) {
@@ -196,15 +231,34 @@ function getSatisfactionRate(posts) {
   };
 }
 
-function getMoodMetric(posts) {
-  const summary = summarizeMoodFromPosts(posts);
-  if (!summary.mood) {
-    return { value: '\u{1F636}', label: 'No mood data yet' };
+function getMoodMetric(summary) {
+  if (!summary.total) {
+    return {
+      icon: '\u{1F636}',
+      label: 'No mood data yet',
+      detail: 'No reactions recorded in the current scope',
+      totalReactions: 0,
+      share: null,
+    };
   }
 
+  if (!summary.mood) {
+    return {
+      icon: '\u{1F636}',
+      label: 'Low confidence',
+      detail: `${summary.total} reactions are still mixed in the current scope`,
+      totalReactions: summary.total,
+      share: null,
+    };
+  }
+
+  const share = Math.round(summary.confidence * 100);
   return {
-    value: getMoodEmoji(summary.mood),
+    icon: getMoodEmoji(summary.mood),
     label: formatMoodLabel(summary.mood),
+    detail: `${summary.total} reactions in scope | ${share}% dominant share`,
+    totalReactions: summary.total,
+    share,
   };
 }
 
@@ -300,6 +354,10 @@ function buildDashboardExportRows(posts) {
     office: getOfficeForService(post.service) ?? '',
     incident_location: post.location ?? '',
     status: post.status ?? '',
+    final_mood: post.finalMood ? formatMoodLabel(post.finalMood) : '',
+    mood_source: post.moodSource ?? '',
+    mood_confidence: post.moodConfidence ? Number(post.moodConfidence).toFixed(2) : '',
+    reaction_total: post.reactionSummary?.total ?? post.reacts ?? 0,
     created_at: post.created_at ?? '',
   }));
 }
@@ -706,6 +764,12 @@ export default function DashboardPage() {
   const [dateRange, setDateRange] = useState({ kind: 'preset', value: '30d' });
   const [serviceFilter, setServiceFilter] = useState('all');
   const [barangayFilter, setBarangayFilter] = useState('all');
+  const [moodSummary, setMoodSummary] = useState({
+    mood: null,
+    total: 0,
+    confidence: 0,
+  });
+  const [moodLoading, setMoodLoading] = useState(true);
   const [performanceMetric, setPerformanceMetric] = useState('avgResolutionTime');
   const [visibleSeries, setVisibleSeries] = useState({
     feedback: true,
@@ -721,10 +785,29 @@ export default function DashboardPage() {
     responseWindow: null,
   });
 
+  const workspaceScopedPosts = useMemo(
+    () => scopePostsToWorkspace(stats?.posts ?? [], workspace),
+    [stats?.posts, workspace],
+  );
+
+  const scopeFilteredPosts = useMemo(() => workspaceScopedPosts.filter((post) => {
+    if (workspace.isSuperAdmin && serviceFilter !== 'all') {
+      const service = String(post.service ?? '').trim();
+      if (service !== serviceFilter) return false;
+    }
+
+    if (workspace.isSuperAdmin && barangayFilter !== 'all') {
+      const location = String(post.location ?? '').trim();
+      if (location !== barangayFilter) return false;
+    }
+
+    return true;
+  }), [barangayFilter, serviceFilter, workspace.isSuperAdmin, workspaceScopedPosts]);
+
   const dateScopedPosts = useMemo(() => {
-    const posts = scopePostsToWorkspace(stats?.posts ?? [], workspace);
+    const posts = workspaceScopedPosts;
     return filterPostsByDashboardDateRange(posts, dateRange);
-  }, [dateRange, stats?.posts, workspace]);
+  }, [dateRange, workspaceScopedPosts]);
 
   const filteredPosts = useMemo(() => dateScopedPosts.filter((post) => {
     if (workspace.isSuperAdmin && serviceFilter !== 'all') {
@@ -740,6 +823,37 @@ export default function DashboardPage() {
     return true;
   }), [barangayFilter, dateScopedPosts, serviceFilter, workspace.isSuperAdmin]);
 
+  useEffect(() => {
+    let mounted = true;
+    const postIds = scopeFilteredPosts.map((post) => post.id).filter(Boolean);
+    const { startAt, endAt } = getReactionDateWindow(dateRange);
+
+    if (!postIds.length) {
+      setMoodSummary({ mood: null, total: 0, confidence: 0 });
+      setMoodLoading(false);
+      return () => { mounted = false; };
+    }
+
+    setMoodLoading(true);
+    getScopedMoodSummary({ postIds, startAt, endAt })
+      .then((summary) => {
+        if (!mounted) return;
+        setMoodSummary(summary);
+      })
+      .catch((error) => {
+        console.error('Dashboard mood summary failed:', error);
+        if (!mounted) return;
+        setMoodSummary({ mood: null, total: 0, confidence: 0 });
+      })
+      .finally(() => {
+        if (mounted) setMoodLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [dateRange, scopeFilteredPosts]);
+
   const resolvedCount = filteredPosts.filter((post) => normalizeText(post.status) === 'resolved').length;
   const dismissedCount = filteredPosts.filter((post) => deriveVerificationStatus(post.status) === 'Dismissed').length;
 
@@ -752,7 +866,7 @@ export default function DashboardPage() {
     [stats?.posts],
   );
 
-  const moodMetric = useMemo(() => getMoodMetric(filteredPosts), [filteredPosts]);
+  const moodMetric = useMemo(() => getMoodMetric(moodSummary), [moodSummary]);
   const avgResolutionMetric = useMemo(() => getAverageResolutionTime(filteredPosts), [filteredPosts]);
   const resolutionRateMetric = useMemo(() => getResolutionRate(filteredPosts), [filteredPosts]);
   const satisfactionRateMetric = useMemo(() => getSatisfactionRate(filteredPosts), [filteredPosts]);
@@ -844,6 +958,7 @@ export default function DashboardPage() {
           heading: 'Key Performance Indicators',
           rows: [
             { label: 'Mood', value: moodMetric.label },
+            { label: 'Mood detail', value: moodMetric.detail },
             { label: 'Avg. resolution time', value: avgResolutionMetric.value },
             { label: 'Resolution rate', value: resolutionRateMetric.value },
             { label: 'Satisfaction rate', value: satisfactionRateMetric.value },
@@ -1053,8 +1168,9 @@ export default function DashboardPage() {
               <span className={styles.kpiTitle}>Mood</span>
               <span className={styles.kpiIcon}><SmileyWink size={18} weight="duotone" /></span>
             </div>
-            <strong className={styles.kpiValue}>{loading ? '...' : moodMetric.value}</strong>
-            <span className={styles.kpiValueLabel}>{loading ? 'Loading mood signal' : moodMetric.label}</span>
+            <strong className={styles.kpiValue}>{loading || moodLoading ? '...' : moodMetric.icon}</strong>
+            <span className={styles.kpiValueLabel}>{loading || moodLoading ? 'Loading mood signal' : moodMetric.label}</span>
+            <span className={styles.kpiMeta}>{loading || moodLoading ? 'Checking current scope reactions' : moodMetric.detail}</span>
           </article>
 
           <article className={styles.kpiCard}>
