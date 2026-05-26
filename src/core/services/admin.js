@@ -227,10 +227,19 @@ export async function updateUserRole(userId, role) {
 export async function getAdminReports() {
   if (!supabase) return { data: [], count: 0 };
 
-  const { data, count, error } = await supabase
+  let queryResult = await supabase
     .from('reports')
-    .select('id, reporter_id, reported_entity_type, reported_entity_id, reason, description, created_at', { count: 'exact' })
+    .select('id, reporter_id, reported_entity_type, reported_entity_id, reason, description, selected_flags, created_at', { count: 'exact' })
     .order('created_at', { ascending: false });
+
+  if (queryResult.error && isSchemaMismatch(queryResult.error)) {
+    queryResult = await supabase
+      .from('reports')
+      .select('id, reporter_id, reported_entity_type, reported_entity_id, reason, description, created_at', { count: 'exact' })
+      .order('created_at', { ascending: false });
+  }
+
+  const { data, count, error } = queryResult;
 
   if (error) {
     if (isSchemaMismatch(error)) return { data: [], count: 0 };
@@ -296,6 +305,7 @@ export async function getAdminReports() {
       return {
         ...row,
         normalizedType,
+        selected_flags: Array.isArray(row.selected_flags) ? row.selected_flags : [],
         reporterUsername,
         targetUserId,
         username: targetUsername ?? reporterUsername,

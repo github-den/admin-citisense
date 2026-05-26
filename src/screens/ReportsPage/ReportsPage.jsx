@@ -57,7 +57,11 @@ function formatReportDate(value) {
 }
 
 function getReportPreview(report) {
-  const content = String(report.description ?? '').replace(/\s+/g, ' ').trim();
+  const selectedFlags = Array.isArray(report.selected_flags)
+    ? report.selected_flags.map((flag) => String(flag ?? '').trim()).filter(Boolean)
+    : [];
+  const selectedFlagsLabel = selectedFlags.length ? `Selected flags: ${selectedFlags.join(', ')}` : '';
+  const content = String(report.description ?? selectedFlagsLabel).replace(/\s+/g, ' ').trim();
   if (!content) return 'No description provided.';
   if (content.length <= 140) return content;
   return `${content.slice(0, 140).trimEnd()}...`;
@@ -66,6 +70,14 @@ function getReportPreview(report) {
 function normalizeReasonLabel(value) {
   const reason = String(value ?? '').trim();
   return reason || 'No reason provided';
+}
+
+function getReasonLabel(report) {
+  const selectedFlags = Array.isArray(report.selected_flags)
+    ? report.selected_flags.map((flag) => String(flag ?? '').trim()).filter(Boolean)
+    : [];
+  if (selectedFlags.length > 0) return selectedFlags.join(', ');
+  return normalizeReasonLabel(report.reason);
 }
 
 export default function ReportsPage() {
@@ -88,7 +100,7 @@ export default function ReportsPage() {
   const reasonOptions = useMemo(() => {
     const uniqueReasons = Array.from(new Set(
       reports
-        .map((report) => normalizeReasonLabel(report.reason))
+        .map((report) => getReasonLabel(report))
         .filter(Boolean),
     )).sort((left, right) => left.localeCompare(right));
 
@@ -114,7 +126,7 @@ export default function ReportsPage() {
       const normalizedType = normalizeText(report.normalizedType ?? report.reported_entity_type);
       if (typeFilter !== 'all' && normalizedType !== typeFilter) return false;
 
-      const reasonLabel = normalizeReasonLabel(report.reason);
+      const reasonLabel = getReasonLabel(report);
       if (reasonFilter !== 'all' && reasonLabel !== reasonFilter) return false;
 
       if (!matchesAdminDateRange(report.created_at, dateRange)) {
@@ -152,7 +164,7 @@ export default function ReportsPage() {
       report_number: reportNumbers.get(String(report.id)) ?? '',
       type: formatReportTypeLabel(report.reported_entity_type),
       username: report.username ?? 'Unknown user',
-      reason: normalizeReasonLabel(report.reason),
+      reason: getReasonLabel(report),
       description: report.description ?? '',
       reported_at: formatReportDate(report.created_at),
     }));
@@ -171,7 +183,7 @@ export default function ReportsPage() {
           heading: `Report ${reportNumbers.get(String(report.id)) ?? '---'} / ${formatReportTypeLabel(report.reported_entity_type)}`,
           rows: [
             { label: 'Username', value: report.username ?? 'Unknown user' },
-            { label: 'Reason', value: normalizeReasonLabel(report.reason) },
+            { label: 'Reason', value: getReasonLabel(report) },
             { label: 'Description', value: report.description ?? '' },
             { label: 'Created', value: formatReportDate(report.created_at) },
           ],
@@ -267,7 +279,7 @@ export default function ReportsPage() {
       key: 'reason',
       label: 'Reason',
       width: 210,
-      render: (report) => <span className={styles.cellBody}>{normalizeReasonLabel(report.reason)}</span>,
+      render: (report) => <span className={styles.cellBody}>{getReasonLabel(report)}</span>,
     },
     {
       key: 'preview',

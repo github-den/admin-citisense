@@ -123,7 +123,11 @@ function buildReportLookup(reports) {
     const key = String(report.reported_entity_id ?? '');
     const current = lookup.get(key) ?? { count: 0, reasons: [], handles: [] };
     current.count += 1;
-    if (report.reason) current.reasons.push(report.reason);
+    if (Array.isArray(report.selected_flags) && report.selected_flags.length > 0) {
+      current.reasons.push(...report.selected_flags.map((flag) => String(flag ?? '').trim()).filter(Boolean));
+    } else if (report.reason) {
+      current.reasons.push(report.reason);
+    }
     if (report.reporter_id) current.handles.push(`@${String(report.reporter_id).slice(0, 8)}`);
     lookup.set(key, current);
   });
@@ -156,6 +160,10 @@ function getDisplayHandle(value) {
   const normalized = String(value ?? '').trim();
   if (!normalized) return 'Unknown user';
   return normalized.replace(/^@+/, '');
+}
+
+function isComplaintFeedback(post) {
+  return normalizeText(post?.type) === 'complaint';
 }
 
 function getStatusLabel(post) {
@@ -364,6 +372,11 @@ export default function FeedbacksPage() {
   }, [filteredPosts, isFilteredView]);
 
   async function handleStatusPatch(post, nextVerification, nextResolution) {
+    if (!isComplaintFeedback(post)) {
+      showToast('Only complaint feedback can be updated.', 'warning');
+      return;
+    }
+
     try {
       const nextStatus = composeStatus(nextVerification, nextResolution);
       await changeStatus(post.id, nextStatus);
@@ -375,6 +388,11 @@ export default function FeedbacksPage() {
   }
 
   async function handleDismiss(post) {
+    if (!isComplaintFeedback(post)) {
+      showToast('Only complaint feedback can be updated.', 'warning');
+      return;
+    }
+
     if (!dismissReasonDraft.trim()) return;
     await handleStatusPatch(post, 'Dismissed', post.resolutionStatus);
     showToast('Dismissal reason saved locally for this session.', 'info', 3000);
@@ -382,6 +400,11 @@ export default function FeedbacksPage() {
   }
 
   function handleResponseSave(post) {
+    if (!isComplaintFeedback(post)) {
+      showToast('Only complaint feedback can be updated.', 'warning');
+      return;
+    }
+
     const draft = responseDrafts[post.id] ?? '';
     if (!draft.trim()) return;
     showToast('Pinned response saved locally.', 'info', 3000);
@@ -647,17 +670,19 @@ export default function FeedbacksPage() {
           >
             View
           </button>
-          <button
-            type="button"
-            className={styles.actionLink}
-            onClick={() => {
-              setSelectedPostId(post.id);
-              setReportsOpen(false);
-              setDismissMode(false);
-            }}
-          >
-            Update
-          </button>
+          {isComplaintFeedback(post) ? (
+            <button
+              type="button"
+              className={styles.actionLink}
+              onClick={() => {
+                setSelectedPostId(post.id);
+                setReportsOpen(false);
+                setDismissMode(false);
+              }}
+            >
+              Update
+            </button>
+          ) : null}
         </div>
       ),
     },
@@ -848,10 +873,12 @@ export default function FeedbacksPage() {
                 <div className={styles.neutralBanner}>
                   <div className={styles.neutralBannerTitle}>AI flag</div>
                   <div className={styles.neutralBannerText}>{selectedPost.aiFlagReason}</div>
-                  <div className={styles.buttonRow} style={{ marginTop: 10 }}>
-                    <Button variant="secondary" size="sm" onClick={() => handleStatusPatch(selectedPost, 'Dismissed', selectedPost.resolutionStatus)}>Dismiss</Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleStatusPatch(selectedPost, 'Verified', selectedPost.resolutionStatus)}>Verify</Button>
-                  </div>
+                  {isComplaintFeedback(selectedPost) ? (
+                    <div className={styles.buttonRow} style={{ marginTop: 10 }}>
+                      <Button variant="secondary" size="sm" onClick={() => handleStatusPatch(selectedPost, 'Dismissed', selectedPost.resolutionStatus)}>Dismiss</Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleStatusPatch(selectedPost, 'Verified', selectedPost.resolutionStatus)}>Verify</Button>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -864,25 +891,32 @@ export default function FeedbacksPage() {
 
                 <section className={styles.drawerSection}>
                   <div className={styles.panelTitle}>Status</div>
-                  <div className={styles.statusRail} style={{ marginTop: 12 }}>
-                    <div className={styles.statusBlock}>
-                      <span className={styles.statusBlockLabel}>Verification</span>
-                      <select className={styles.select} value={selectedPost.verificationStatus} onChange={(event) => handleStatusPatch(selectedPost, event.target.value, selectedPost.resolutionStatus)}>
-                        {VERIFICATION_OPTIONS.filter((value) => value !== 'All').map((value) => <option key={value} value={value}>{value}</option>)}
-                      </select>
+                  {isComplaintFeedback(selectedPost) ? (
+                    <div className={styles.statusRail} style={{ marginTop: 12 }}>
+                      <div className={styles.statusBlock}>
+                        <span className={styles.statusBlockLabel}>Verification</span>
+                        <select className={styles.select} value={selectedPost.verificationStatus} onChange={(event) => handleStatusPatch(selectedPost, event.target.value, selectedPost.resolutionStatus)}>
+                          {VERIFICATION_OPTIONS.filter((value) => value !== 'All').map((value) => <option key={value} value={value}>{value}</option>)}
+                        </select>
+                      </div>
+                      <div className={styles.statusBlock}>
+                        <span className={styles.statusBlockLabel}>Resolution</span>
+                        <select
+                          className={styles.select}
+                          value={selectedPost.resolutionStatus}
+                          disabled={selectedPost.verificationStatus === 'Dismissed'}
+                          onChange={(event) => handleStatusPatch(selectedPost, selectedPost.verificationStatus, event.target.value)}
+                        >
+                          {RESOLUTION_OPTIONS.filter((value) => value !== 'All').map((value) => <option key={value} value={value}>{value}</option>)}
+                        </select>
+                      </div>
                     </div>
-                    <div className={styles.statusBlock}>
-                      <span className={styles.statusBlockLabel}>Resolution</span>
-                      <select
-                        className={styles.select}
-                        value={selectedPost.resolutionStatus}
-                        disabled={selectedPost.verificationStatus === 'Dismissed'}
-                        onChange={(event) => handleStatusPatch(selectedPost, selectedPost.verificationStatus, event.target.value)}
-                      >
-                        {RESOLUTION_OPTIONS.filter((value) => value !== 'All').map((value) => <option key={value} value={value}>{value}</option>)}
-                      </select>
+                  ) : (
+                    <div className={styles.neutralBanner} style={{ marginTop: 12 }}>
+                      <div className={styles.neutralBannerTitle}>Read-only feedback</div>
+                      <div className={styles.neutralBannerText}>Only complaint feedback can be updated.</div>
                     </div>
-                  </div>
+                  )}
                 </section>
 
                 <section className={styles.collapsible}>
@@ -912,61 +946,72 @@ export default function FeedbacksPage() {
                       onChange={(event) => setResponseDrafts((current) => ({ ...current, [selectedPost.id]: event.target.value }))}
                       placeholder={`Response from ${selectedPost.office}`}
                     />
-                    <div className={styles.buttonRow} style={{ marginTop: 10 }}>
-                      <Button variant="secondary" size="sm" onClick={() => handleResponseSave(selectedPost)}>Add / Edit Response</Button>
-                    </div>
+                    {isComplaintFeedback(selectedPost) ? (
+                      <div className={styles.buttonRow} style={{ marginTop: 10 }}>
+                        <Button variant="secondary" size="sm" onClick={() => handleResponseSave(selectedPost)}>Add / Edit Response</Button>
+                      </div>
+                    ) : (
+                      <div className={styles.cellSub} style={{ marginTop: 10 }}>Only complaint feedback can be updated.</div>
+                    )}
                   </div>
                 </section>
 
                 <section className={styles.drawerSection}>
                   <div className={styles.panelTitle}>Actions</div>
-                  <div className={styles.actionStrip} style={{ marginTop: 12 }}>
-                    {workspace.isLGUAdmin ? (
-                      <>
-                        <select
-                          className={styles.select}
-                          value={(routingDrafts[selectedPost.id] ?? {}).office ?? ''}
-                          onChange={(event) => setRoutingDrafts((current) => ({ ...current, [selectedPost.id]: { ...(current[selectedPost.id] ?? {}), office: event.target.value } }))}
-                        >
-                          <option value="">Transfer Office</option>
-                          {officeOptions.map((office) => <option key={office} value={office}>{office}</option>)}
-                        </select>
-                        <Button variant="secondary" size="sm" onClick={() => handleRouteAction(selectedPost, 'transferOffice')}>Transfer</Button>
-                        <select
-                          className={styles.select}
-                          value={(routingDrafts[selectedPost.id] ?? {}).barangay ?? ''}
-                          onChange={(event) => setRoutingDrafts((current) => ({ ...current, [selectedPost.id]: { ...(current[selectedPost.id] ?? {}), barangay: event.target.value } }))}
-                        >
-                          <option value="">Delegate to Barangay</option>
-                          {barangayOptions.map((barangay) => <option key={barangay} value={barangay}>{barangay}</option>)}
-                        </select>
-                        <Button variant="secondary" size="sm" onClick={() => handleRouteAction(selectedPost, 'delegate')}>Delegate</Button>
-                      </>
-                    ) : null}
-                    {workspace.isSuperAdmin ? (
-                      <>
-                        <select
-                          className={styles.select}
-                          value={(routingDrafts[selectedPost.id] ?? {}).office ?? ''}
-                          onChange={(event) => setRoutingDrafts((current) => ({ ...current, [selectedPost.id]: { ...(current[selectedPost.id] ?? {}), office: event.target.value } }))}
-                        >
-                          <option value="">Reassign Office</option>
-                          {officeOptions.map((office) => <option key={office} value={office}>{office}</option>)}
-                        </select>
-                        <Button variant="secondary" size="sm" onClick={() => handleRouteAction(selectedPost, 'reassignOffice')}>Reassign Office</Button>
-                        <select
-                          className={styles.select}
-                          value={(routingDrafts[selectedPost.id] ?? {}).barangay ?? ''}
-                          onChange={(event) => setRoutingDrafts((current) => ({ ...current, [selectedPost.id]: { ...(current[selectedPost.id] ?? {}), barangay: event.target.value } }))}
-                        >
-                          <option value="">Reassign Barangay</option>
-                          {barangayOptions.map((barangay) => <option key={barangay} value={barangay}>{barangay}</option>)}
-                        </select>
-                        <Button variant="secondary" size="sm" onClick={() => handleRouteAction(selectedPost, 'reassignBarangay')}>Reassign Barangay</Button>
-                      </>
-                    ) : null}
-                    <Button variant="outline" size="sm" onClick={() => setDismissMode((current) => !current)}>Dismiss with Reason</Button>
-                  </div>
+                  {isComplaintFeedback(selectedPost) ? (
+                    <div className={styles.actionStrip} style={{ marginTop: 12 }}>
+                      {workspace.isLGUAdmin ? (
+                        <>
+                          <select
+                            className={styles.select}
+                            value={(routingDrafts[selectedPost.id] ?? {}).office ?? ''}
+                            onChange={(event) => setRoutingDrafts((current) => ({ ...current, [selectedPost.id]: { ...(current[selectedPost.id] ?? {}), office: event.target.value } }))}
+                          >
+                            <option value="">Transfer Office</option>
+                            {officeOptions.map((office) => <option key={office} value={office}>{office}</option>)}
+                          </select>
+                          <Button variant="secondary" size="sm" onClick={() => handleRouteAction(selectedPost, 'transferOffice')}>Transfer</Button>
+                          <select
+                            className={styles.select}
+                            value={(routingDrafts[selectedPost.id] ?? {}).barangay ?? ''}
+                            onChange={(event) => setRoutingDrafts((current) => ({ ...current, [selectedPost.id]: { ...(current[selectedPost.id] ?? {}), barangay: event.target.value } }))}
+                          >
+                            <option value="">Delegate to Barangay</option>
+                            {barangayOptions.map((barangay) => <option key={barangay} value={barangay}>{barangay}</option>)}
+                          </select>
+                          <Button variant="secondary" size="sm" onClick={() => handleRouteAction(selectedPost, 'delegate')}>Delegate</Button>
+                        </>
+                      ) : null}
+                      {workspace.isSuperAdmin ? (
+                        <>
+                          <select
+                            className={styles.select}
+                            value={(routingDrafts[selectedPost.id] ?? {}).office ?? ''}
+                            onChange={(event) => setRoutingDrafts((current) => ({ ...current, [selectedPost.id]: { ...(current[selectedPost.id] ?? {}), office: event.target.value } }))}
+                          >
+                            <option value="">Reassign Office</option>
+                            {officeOptions.map((office) => <option key={office} value={office}>{office}</option>)}
+                          </select>
+                          <Button variant="secondary" size="sm" onClick={() => handleRouteAction(selectedPost, 'reassignOffice')}>Reassign Office</Button>
+                          <select
+                            className={styles.select}
+                            value={(routingDrafts[selectedPost.id] ?? {}).barangay ?? ''}
+                            onChange={(event) => setRoutingDrafts((current) => ({ ...current, [selectedPost.id]: { ...(current[selectedPost.id] ?? {}), barangay: event.target.value } }))}
+                          >
+                            <option value="">Reassign Barangay</option>
+                            {barangayOptions.map((barangay) => <option key={barangay} value={barangay}>{barangay}</option>)}
+                          </select>
+                          <Button variant="secondary" size="sm" onClick={() => handleRouteAction(selectedPost, 'reassignBarangay')}>Reassign Barangay</Button>
+                        </>
+                      ) : null}
+                      <Button variant="outline" size="sm" onClick={() => setDismissMode((current) => !current)}>Dismiss with Reason</Button>
+                    </div>
+                  ) : (
+                    <div className={styles.neutralBanner} style={{ marginTop: 12 }}>
+                      <div className={styles.neutralBannerTitle}>Read-only actions</div>
+                      <div className={styles.neutralBannerText}>Routing and dismissal are available for complaint feedback only.</div>
+                    </div>
+                  )}
 
                   {dismissMode ? (
                     <div className={styles.inlineForm}>
