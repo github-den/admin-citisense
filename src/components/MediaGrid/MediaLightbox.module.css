@@ -1,0 +1,204 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  justify-items: center;
+  gap: 16px;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.92);
+  overflow: hidden;
+}
+
+.closeBtn {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 4;
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(255, 255, 255);
+  background: transparent;
+  transition: background-color 140ms var(--ease-out);
+}
+
+.closeBtn:hover,
+.closeBtn:focus-visible {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.stage {
+  align-self: center;
+  width: min(82vh, 920px, calc(100vw - 48px));
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: rgba(2, 6, 23, 0.56);
+  position: relative;
+}
+
+.media {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  transform-origin: center;
+  user-select: none;
+}
+
+.mediaZoomable {
+  cursor: zoom-in;
+}
+
+.mediaZoomed {
+  cursor: zoom-out;
+}
+
+.footer {
+  width: min(720px, calc(100vw - 48px));
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+}
+
+.dots {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.dotActive {
+  background: rgb(255, 255, 255);
+}
+
+.thumbnails {
+  max-width: 100%;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px;
+}
+
+.thumbnails::-webkit-scrollbar {
+  display: none;
+}
+
+.thumbnailButton {
+  width: 62px;
+  height: 62px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.thumbnailButton:hover,
+.thumbnailButton:focus-visible {
+  border-color: rgba(255, 255, 255, 0.62);
+}
+
+.thumbnailActive {
+  border-color: rgb(255, 255, 255);
+}
+
+.thumbnailMedia {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.videoStageWrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.playOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+
+.playButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ui-accent);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
+  transform: scale(0.95);
+  transition: transform 0.2s var(--ease-out), background 0.2s;
+}
+
+.playOverlay:hover .playButton {
+  transform: scale(1);
+  background: rgb(255, 255, 255);
+}
+
+.thumbnailVideoWrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.thumbnailPlayIcon {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.2);
+  color: rgb(255, 255, 255);
+}
+
+@media (max-width: 760px) {
+  .overlay {
+    padding: 16px;
+  }
+
+  .stage {
+    width: min(calc(100vw - 32px), calc(100vh - 150px));
+  }
+
+  .footer {
+    width: calc(100vw - 32px);
+  }
+
+  .thumbnailButton {
+    width: 52px;
+    height: 52px;
+  }
+}

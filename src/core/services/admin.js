@@ -173,14 +173,14 @@ export async function getAdminPosts({ status, type, page = 0, limit } = {}) {
   return { data: mapPosts(rowsWithMood), count: count ?? 0 };
 }
 
-export async function updatePostStatus(postId, status) {
+export async function updatePostStatus(postId, status, { adminNotes = null } = {}) {
   if (!supabase) return;
 
   const mappedStatus = STATUS_TO_DB[status] ?? status;
   const rpcResult = await supabase.rpc('set_post_status', {
     p_post_id: postId,
     p_status: mappedStatus,
-    p_admin_notes: null,
+    p_admin_notes: adminNotes,
   });
 
   if (!rpcResult.error) return;

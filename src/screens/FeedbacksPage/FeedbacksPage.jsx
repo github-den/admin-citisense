@@ -1,16 +1,23 @@
-import { useEffect, useMemo, useState } from 'react';
-import { CalendarBlank, CaretDown, ChartDonut, Clock, ClockCountdown, DownloadSimple, HandHeart, Lightbulb, MapPin, Star, Tag, Warning, X } from '@phosphor-icons/react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { CalendarBlank, CaretDown, ChatsCircle, ChartDonut, Clock, ClockCountdown, DownloadSimple, FlagBanner, HandHeart, Lightbulb, MapPin, Paperclip, PaperPlaneTilt, Smiley, Star, TrayArrowUp, Warning, X } from '@phosphor-icons/react';
 import AdminDateRangeFilter from '../../components/ui/AdminDateRangeFilter.jsx';
+import Avatar from '../../components/ui/Avatar.jsx';
 import DataTable from '../../components/DataTable/DataTable.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Menu from '../../components/ui/Menu.jsx';
+import Popover from '../../components/ui/Popover.jsx';
 import SearchInput from '../../components/ui/SearchInput.jsx';
 import Tooltip from '../../components/ui/Tooltip.jsx';
+import MediaCarousel from '../../components/MediaGrid/MediaCarousel.jsx';
 import { POST_TYPES, URDANETA_BARANGAYS } from '../../constants/index.js';
+import { useAuth } from '@core/context/AuthContext.jsx';
 import { useAdminWorkspace } from '@core/hooks/useAdminWorkspace.js';
 import { useAdminFeed } from '@core/hooks/useAdminFeed.js';
 import { useAdminReports } from '@core/hooks/useAdminReports.js';
+import { useDiscussions } from '@core/hooks/useDiscussions.js';
 import { getAdminPosts } from '@core/services/admin.js';
+import { postDiscuss } from '@core/services/posts.js';
+import { uploadMediaFiles } from '@core/services/media.js';
 import {
   composeStatus,
   deriveResolutionStatus,
@@ -22,6 +29,8 @@ import {
 } from '@core/lib/adminWorkspace.js';
 import { createPresetAdminDateRange, isDefaultAdminDateRange } from '@core/lib/adminDateRange.js';
 import { exportRowsToCsv, exportRowsToXlsx } from '@core/lib/exporters.js';
+import { lockPageScroll } from '@core/utils/lockPageScroll.js';
+import { formatCount, formatTime as formatRelativeTime } from '@core/utils/format.js';
 import { showToast } from '../../components/Toast/Toast.jsx';
 import styles from '../../styles/adminWorkspace.module.css';
 
@@ -34,6 +43,16 @@ const TYPE_OPTIONS = [
   { value: 'suggestion', label: 'Suggestion' },
   { value: 'compliment', label: 'Compliment' },
 ];
+const DISMISS_REASON_OPTIONS = [
+  'Not about a government service',
+  'Outside service coverage area',
+  'Spam',
+  'AI generated evidence',
+  'Harassment or threatening behavior',
+  'Offensive or discriminatory content',
+  'False or misleading information',
+  'Contains personal information',
+];
 const TYPE_META = {
   complaint: { label: 'Complaint', Icon: Warning, toneClass: styles.typeComplaint },
   suggestion: { label: 'Suggestion', Icon: Lightbulb, toneClass: styles.typeSuggestion },
@@ -41,6 +60,9 @@ const TYPE_META = {
 };
 const PAGE_SIZE = 10;
 const COMPLAINT_REVIEW_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+const DETAIL_CLOSE_ANIMATION_MS = 200;
+const MAX_ATTACHMENTS = 5;
+const DEFAULT_VISIBLE_REPLIES = 5;
 
 function getDisplayFeedbackNo(value) {
   const normalized = String(value ?? '').trim();
@@ -166,6 +188,128 @@ function isComplaintFeedback(post) {
   return normalizeText(post?.type) === 'complaint';
 }
 
+function isVideo(url) {
+  return /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(String(url ?? ''));
+}
+
+function isImage(url) {
+  return /\.(png|jpe?g|gif|webp|avif|bmp|svg)(\?.*)?$/i.test(String(url ?? ''));
+}
+
+function getAvatarSrc(value) {
+  const normalized = String(value ?? '').trim();
+  if (normalized.startsWith('/avatars/')) return normalized;
+  if (/^(https?:|data:|blob:)/i.test(normalized)) return normalized;
+  return null;
+}
+
+function buildStatusTimeline(post) {
+  if (!post) return [];
+  const submittedAt = formatDateTime(post.created_at);
+  const updatedAt = formatDateTime(post.updated_at);
+  const verification = post.verificationStatus;
+  const resolution = post.resolutionStatus;
+
+  const timeline = [
+    {
+      key: 'submitted',
+      label: 'Submitted',
+      value: submittedAt,
+      state: 'done',
+      detail: post.service ? `Assigned category: ${post.service}` : 'Feedback entered the admin queue.',
+    },
+    {
+      key: 'verification',
+      label: verification,
+      value: verification === 'Under Review' ? formatResponseWindow(post) : updatedAt,
+      state: verification === 'Under Review' ? 'current' : verification === 'Dismissed' ? 'blocked' : 'done',
+      detail: getVerificationDescription(verification),
+    },
+  ];
+
+  if (verification === 'Verified') {
+    timeline.push({
+      key: 'resolution',
+      label: resolution,
+      value: updatedAt,
+      state: resolution === 'Resolved' ? 'done' : 'current',
+      detail: getResolutionDescription(resolution),
+    });
+  }
+
+  return timeline;
+}
+
+function makeAttachment(file) {
+  return {
+    id: crypto.randomUUID(),
+    file,
+    url: URL.createObjectURL(file),
+    type: file.type?.startsWith('video/') ? 'video' : 'image',
+  };
+}
+
+function formatDiscussionTimestamp(value) {
+  if (!value) return '';
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return '';
+
+  const diff = Date.now() - timestamp;
+  if (diff < 24 * 60 * 60 * 1000) return formatRelativeTime(value);
+
+  const date = new Date(timestamp);
+  const day = date.toLocaleDateString('en-GB', { day: '2-digit' });
+  const month = date.toLocaleDateString('en-GB', { month: 'short' });
+  const year = date.toLocaleDateString('en-GB', { year: '2-digit' });
+  return `${day} ${month} '${year}`;
+}
+
+function buildDiscussionGroups(items, sortMode = 'popular') {
+  const byId = new Map(items.map((item) => [String(item.id), item]));
+  const byParent = new Map();
+
+  items.forEach((item) => {
+    const key = String(item.parentId ?? 'root');
+    if (!byParent.has(key)) byParent.set(key, []);
+    byParent.get(key).push(item);
+  });
+
+  function getReplies(parentId) {
+    const nodes = [...(byParent.get(String(parentId)) ?? [])]
+      .sort((left, right) => Date.parse(left.createdAt ?? '') - Date.parse(right.createdAt ?? ''));
+
+    return nodes.flatMap((node) => {
+      const parent = byId.get(String(node.parentId));
+      const replyTarget = parent?.author?.fullName ?? null;
+      return [
+        {
+          ...node,
+          replyTarget,
+          displayTime: formatDiscussionTimestamp(node.createdAt),
+        },
+        ...getReplies(node.id),
+      ];
+    });
+  }
+
+  return items
+    .filter((item) => !item.parentId)
+      .filter((item) => (sortMode === 'lgu-response' ? item.isPinned || item.isAdmin : true))
+    .map((item) => ({
+      ...item,
+      replies: getReplies(item.id),
+      displayTime: formatDiscussionTimestamp(item.createdAt),
+    }))
+    .sort((left, right) => {
+      if (left.isPinned !== right.isPinned) return left.isPinned ? -1 : 1;
+      if (sortMode === 'popular') {
+        const likeDelta = Number(right.likes ?? 0) - Number(left.likes ?? 0);
+        if (likeDelta !== 0) return likeDelta;
+      }
+      return Date.parse(right.createdAt ?? '') - Date.parse(left.createdAt ?? '');
+    });
+}
+
 function getStatusLabel(post) {
   if (post.verificationStatus === 'Verified') {
     return post.resolutionStatus && post.resolutionStatus !== 'Not Started'
@@ -174,6 +318,119 @@ function getStatusLabel(post) {
   }
 
   return post.verificationStatus;
+}
+
+function formatInlineComplaintStatus(post) {
+  if (!isComplaintFeedback(post)) return '';
+
+  const status = getStatusLabel(post);
+  const responseWindow = formatResponseWindow(post);
+
+  if (post.verificationStatus === 'Under Review' && responseWindow !== 'N/A') {
+    return `${status} - ${responseWindow}`;
+  }
+
+  return status;
+}
+
+function getVerificationDescription(value) {
+  if (value === 'Under Review') return 'Keep the feedback in intake while the office checks details.';
+  if (value === 'Verified') return 'Confirm this is actionable and unlock resolution tracking.';
+  if (value === 'Dismissed') return 'Close this as not actionable for the current workflow.';
+  return '';
+}
+
+function getResolutionDescription(value) {
+  if (value === 'Not Started') return 'Verified, but no resolution work has started yet.';
+  if (value === 'In Progress') return 'Work is actively moving with the responsible office.';
+  if (value === 'On Hold') return 'Progress is paused while waiting for input or resources.';
+  if (value === 'Resolved') return 'The issue has been completed and can be communicated as resolved.';
+  return '';
+}
+
+function getDismissReportItems(post) {
+  const reasons = Array.isArray(post?.reportReasons) ? post.reportReasons : [];
+  const handles = Array.isArray(post?.reportHandles) ? post.reportHandles : [];
+  const count = Number(post?.reportCount ?? 0);
+
+  if (reasons.length > 0) {
+    return reasons.map((reason, index) => ({
+      id: `report-${index}-${reason}`,
+      title: reason,
+      meta: handles[index] ? `Reported by ${handles[index]}` : 'Citizen report',
+    }));
+  }
+
+  if (count > 0) {
+    return Array.from({ length: count }, (_, index) => ({
+      id: `report-${index}`,
+      title: 'Report submitted',
+      meta: handles[index] ? `Reported by ${handles[index]}` : 'Citizen report',
+    }));
+  }
+
+  return [];
+}
+
+function FeedbackDetailsPopover({ post, typeLabel, relativeTime }) {
+  const flags = [
+    ...(post.reportReasons ?? []),
+    post.aiFlagged ? post.aiFlagReason : '',
+  ].filter(Boolean);
+
+  return (
+    <div className={styles.feedbackDetails}>
+      <div className={styles.detailsHeader}>Feedback details</div>
+      <div className={styles.detailsTwoCol}>
+        <div className={styles.detailsCol}>
+          <div className={styles.detailsRow}>
+            <span>Feedback No.</span>
+            <strong>{getDisplayFeedbackNo(post.feedbackNo)}</strong>
+          </div>
+          <div className={styles.detailsRow}>
+            <span>Citizen</span>
+            <strong>{getDisplayHandle(post.handle)}</strong>
+          </div>
+          <div className={styles.detailsRow}>
+            <span>Posted</span>
+            <Tooltip content={formatDateTime(post.created_at)} align="left">
+              <strong className={styles.postedTime}>{relativeTime}</strong>
+            </Tooltip>
+          </div>
+        </div>
+        <div className={styles.detailsCol}>
+          <div className={styles.detailsRow}>
+            <span>Feedback Type</span>
+            <strong>{typeLabel}</strong>
+          </div>
+          <div className={styles.detailsRow}>
+            <span>Service Category</span>
+            <strong>{post.service || '-'}</strong>
+          </div>
+          <div className={styles.detailsRow}>
+            <span>Location of Incident</span>
+            <strong>{post.location || '-'}</strong>
+          </div>
+        </div>
+      </div>
+      <div className={styles.statusSection}>
+        <div className={styles.statusRow}>
+          <span className={styles.statusLabel}>Status</span>
+          <strong>{isComplaintFeedback(post) ? `${getStatusLabel(post)} / ${formatResponseWindow(post)}` : 'Status N/A'}</strong>
+        </div>
+      </div>
+      <div className={styles.flagsSection}>
+        {flags.length > 0 ? (
+          <>
+            <div className={styles.flagsSubheader}>This post might contain:</div>
+            <div className={styles.flagsCommaList}>{flags.join(', ')}</div>
+          </>
+        ) : (
+          <div className={styles.flagsNone}>No content flags.</div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function createMenuItems(options, currentValue, onChange, valueMap = null) {
@@ -243,6 +500,883 @@ function createStatusMenuItems({
   ];
 }
 
+function DiscussionThreadSkeleton() {
+  return (
+    <div className={styles.threadLoading} aria-hidden="true">
+      <div className={styles.threadSkeletonCard}>
+        <div className={styles.threadSkeletonHeader}>
+          <div className={styles.threadSkeletonAvatar} />
+          <div className={styles.threadSkeletonMeta}>
+            <div className={styles.threadSkeletonName} />
+            <div className={styles.threadSkeletonTime} />
+          </div>
+        </div>
+        <div className={styles.threadSkeletonBody}>
+          <div className={styles.threadSkeletonLine} />
+          <div className={`${styles.threadSkeletonLine} ${styles.threadSkeletonLineShort}`} />
+        </div>
+        <div className={styles.threadSkeletonFooter}>
+          <div className={styles.threadSkeletonChip} />
+          <div className={styles.threadSkeletonChip} />
+          <div className={styles.threadSkeletonChip} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FeedbackDiscussCard({ post }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const typeMeta = getTypeMeta(post.type);
+  const author = getDisplayHandle(post.handle);
+  const relativeTime = formatRelativeTime(post.created_at);
+  const inlineStatus = formatInlineComplaintStatus(post);
+  const mediaUrl = post.imageUrl || post.images?.[0];
+  const mediaItems = [post.imageUrl, ...(Array.isArray(post.images) ? post.images : [])]
+    .filter((url) => isImage(url) || isVideo(url));
+  const authorAvatarSrc = getAvatarSrc(post.bg);
+  const raiseCount = formatCount(post.raises ?? 0);
+  const reactionCount = formatCount(post.reacts ?? 0);
+  const discussionCount = formatCount(post.discuss ?? 0);
+  const reportCount = formatCount(post.reportCount ?? 0);
+
+  useEffect(() => {
+    if (!detailsOpen) return undefined;
+
+    function closeDetailsOnScroll() {
+      setDetailsOpen(false);
+    }
+
+    window.addEventListener('scroll', closeDetailsOnScroll, true);
+    return () => window.removeEventListener('scroll', closeDetailsOnScroll, true);
+  }, [detailsOpen]);
+
+  return (
+    <article className={`${styles.feedCard} ${styles.feedCardNoRadius}`} aria-labelledby={`post-username-${post.id}`} role="article">
+      <div className={styles.topRow}>
+        <div className={styles.identity}>
+          <span className={styles.avatarButton}>
+            <Avatar
+              size="lg"
+              name={post.user}
+              initials={post.initials}
+              src={authorAvatarSrc}
+            />
+          </span>
+          <div className={styles.identityCopy}>
+            <div className={styles.usernameRow}>
+              <span className={styles.usernameButton} id={`post-username-${post.id}`}>
+                {author}
+              </span>
+            </div>
+            <div className={styles.metadataRow}>
+              <span className={styles.timeButton} aria-label={`Posted ${formatDateTime(post.created_at)}`}>
+                {relativeTime}
+              </span>
+              <span className={styles.metadataSeparator}>&middot;</span>
+              <span className={`${styles.typeButton} ${typeMeta.toneClass}`}>
+                <typeMeta.Icon size={14} weight="duotone" aria-hidden="true" />
+                <span>{typeMeta.label}</span>
+              </span>
+              {inlineStatus ? (
+                <>
+                  <span className={styles.metadataSeparator}>&middot;</span>
+                  <span className={`${styles.statusButton} ${post.verificationStatus === 'Under Review' ? styles.statusButtonAlert : ''}`}>
+                    <ChartDonut size={14} weight="duotone" aria-hidden="true" />
+                    <span>{inlineStatus}</span>
+                  </span>
+                </>
+              ) : null}
+              <span className={styles.metadataSeparator}>&middot;</span>
+              <Popover
+                align="start"
+                open={detailsOpen}
+                onOpenChange={setDetailsOpen}
+                panelClassName={styles.detailsPopover}
+                trigger={<button type="button" className={styles.moreButton}>{detailsOpen ? 'less' : 'more'}</button>}
+              >
+                <FeedbackDetailsPopover post={post} typeLabel={typeMeta.label} relativeTime={relativeTime} />
+              </Popover>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className={styles.captionRow}>
+        <div className={styles.captionWrap}>
+          <span className={`${styles.caption} ${styles.captionFull}`}>{post.content || 'No content available.'}</span>
+        </div>
+      </div>
+
+      {mediaItems.length > 0 ? (
+        <MediaCarousel items={mediaItems} className={styles.feedMediaBlock} />
+      ) : mediaUrl ? (
+        <a className={styles.attachment} href={mediaUrl} target="_blank" rel="noreferrer">{mediaUrl}</a>
+      ) : null}
+
+      <div className={styles.actionRow} aria-label="Feedback metrics">
+        <div className={styles.actionCluster}>
+          <Tooltip content={`${raiseCount} ${raiseCount === '1' ? 'raise' : 'raises'}`}>
+            <span className={styles.actionMetric} tabIndex={0} aria-label={`${raiseCount} raises`}>
+              <TrayArrowUp size={20} weight="regular" aria-hidden="true" />
+              <strong>{raiseCount}</strong>
+            </span>
+          </Tooltip>
+
+          <Tooltip content={`${reportCount} ${reportCount === '1' ? 'report' : 'reports'}`}>
+            <span className={styles.actionMetric} tabIndex={0} aria-label={`${reportCount} reports`}>
+              <FlagBanner size={20} weight="regular" aria-hidden="true" />
+              <strong>{reportCount}</strong>
+            </span>
+          </Tooltip>
+
+          <Tooltip content={`${reactionCount} ${reactionCount === '1' ? 'reaction' : 'reactions'}`}>
+            <span className={styles.actionMetric} tabIndex={0} aria-label={`${reactionCount} reactions`}>
+              <Smiley size={20} weight="regular" aria-hidden="true" />
+              <strong>{reactionCount}</strong>
+            </span>
+          </Tooltip>
+
+          <Tooltip content={`${discussionCount} ${discussionCount === '1' ? 'discussion' : 'discussions'}`}>
+            <span className={`${styles.actionMetric} ${styles.actionMetricActive}`} tabIndex={0} aria-label={`${discussionCount} discussions`}>
+              <ChatsCircle size={20} weight="duotone" aria-hidden="true" />
+              <strong>{discussionCount}</strong>
+            </span>
+          </Tooltip>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function DiscussionComposer({ postId, onSent }) {
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+  const [attachments, setAttachments] = useState([]);
+  const [isFocused, setIsFocused] = useState(false);
+  const [hoveredIcon, setHoveredIcon] = useState(null);
+  const fileInputRef = useRef(null);
+  const textareaRef = useRef(null);
+  const attachmentsRef = useRef([]);
+  const { session } = useAuth() ?? {};
+  const remainingAttachments = MAX_ATTACHMENTS - attachments.length;
+  const hasInput = input.trim().length > 0 || attachments.length > 0;
+
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+
+  useEffect(() => () => {
+    attachmentsRef.current.forEach((item) => URL.revokeObjectURL(item.url));
+  }, []);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    if (!isFocused && !hasInput) {
+      textarea.style.height = '44px';
+      return;
+    }
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 80), 225)}px`;
+  }, [input, isFocused, hasInput]);
+
+  function chooseFiles(files) {
+    const incoming = Array.from(files ?? [])
+      .filter((file) => file.type?.startsWith('image/') || file.type?.startsWith('video/'))
+      .slice(0, remainingAttachments)
+      .map(makeAttachment);
+
+    if (incoming.length === 0) return;
+    setAttachments((current) => [...current, ...incoming].slice(0, MAX_ATTACHMENTS));
+  }
+
+  function removeAttachment(id) {
+    setAttachments((current) => {
+      const item = current.find((row) => row.id === id);
+      if (item) URL.revokeObjectURL(item.url);
+      return current.filter((row) => row.id !== id);
+    });
+  }
+
+  async function handleSend() {
+    const body = input.trim();
+    if ((!body && attachments.length === 0) || sending) return;
+
+    setSending(true);
+    setError('');
+
+    const { data: uploadedUrls, error: uploadError } = await uploadMediaFiles(
+      attachments.map((item) => item.file),
+      { ownerId: session?.user?.id, folder: 'discuss' },
+    );
+
+    if (uploadError) {
+      setError(uploadError.message ?? 'Unable to upload attachment.');
+      setSending(false);
+      return;
+    }
+
+    const extraUrls = uploadedUrls.slice(1);
+    const finalBody = [
+      body || 'Attached media',
+      extraUrls.length > 0 ? `Additional media:\n${extraUrls.join('\n')}` : '',
+    ].filter(Boolean).join('\n\n');
+
+    const { error: submitError } = await postDiscuss(postId, finalBody, {
+      parentId: null,
+      imageUrl: uploadedUrls[0] || null,
+      userId: session?.user?.id,
+      isPinned: true,
+    });
+
+    if (submitError) {
+      setError(submitError.message ?? 'Unable to post discussion.');
+    } else {
+      setInput('');
+      attachments.forEach((item) => URL.revokeObjectURL(item.url));
+      setAttachments([]);
+      setIsFocused(false);
+      onSent?.();
+    }
+
+    setSending(false);
+  }
+
+  return (
+    <div className={styles.composerCard}>
+      <div className={styles.composerMain}>
+        <div className={[styles.inputBox, isFocused || hasInput ? styles.inputBoxFocused : ''].join(' ')}>
+          <div className={styles.inputRow1}>
+            <textarea
+              ref={textareaRef}
+              className={styles.discussInput}
+              placeholder="Add official response"
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => {
+                if (input.length === 0 && attachments.length === 0) setIsFocused(false);
+              }}
+            />
+            {!isFocused && !hasInput ? (
+              <div className={styles.inputIconsRight}>
+                <button className={styles.miniIconBtn} type="button" onClick={() => fileInputRef.current?.click()} aria-label="Attach media">
+                  <Paperclip size={18} />
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+          {isFocused || hasInput ? (
+            <div className={styles.inputRow2}>
+              <div className={styles.row2Left}>
+                <button
+                  className={styles.iconBtn}
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  onMouseEnter={() => setHoveredIcon('media')}
+                  onMouseLeave={() => setHoveredIcon(null)}
+                  aria-label="Attach media"
+                >
+                  <Paperclip size={18} weight={hoveredIcon === 'media' ? 'duotone' : 'regular'} />
+                </button>
+              </div>
+              <button className={styles.sendBtn} disabled={!hasInput || sending} onClick={handleSend} aria-label="Send">
+                <PaperPlaneTilt size={18} weight="fill" />
+              </button>
+            </div>
+          ) : null}
+        </div>
+        <input
+          ref={fileInputRef}
+          className={styles.fileInput}
+          type="file"
+          accept="image/*,video/*"
+          multiple
+          onChange={(event) => {
+            chooseFiles(event.target.files);
+            event.target.value = '';
+          }}
+        />
+      </div>
+
+      {attachments.length > 0 ? (
+        <div className={styles.attachTray}>
+          <div className={styles.attachPreviewGrid}>
+            {attachments.map((item) => (
+              <div key={item.id} className={styles.attachPreview}>
+                {item.type === 'video' ? <video src={item.url} muted playsInline preload="metadata" /> : <img src={item.url} alt="" />}
+                <button type="button" onClick={() => removeAttachment(item.id)} aria-label="Remove">
+                  <X size={14} weight="bold" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {error ? <p className={styles.error}>{error}</p> : null}
+    </div>
+  );
+}
+
+function StatusUpdateModal({ post, visible, onClose, onStatusPatch }) {
+  const [evidenceFile, setEvidenceFile] = useState(null);
+  const [evidencePreview, setEvidencePreview] = useState('');
+  const [savingStatus, setSavingStatus] = useState('');
+  const [evidenceError, setEvidenceError] = useState('');
+  const [statusIntent, setStatusIntent] = useState('');
+  const [dismissReasons, setDismissReasons] = useState([]);
+  const [dismissError, setDismissError] = useState('');
+  const evidenceInputRef = useRef(null);
+  const { session } = useAuth() ?? {};
+
+  useEffect(() => () => {
+    if (evidencePreview) URL.revokeObjectURL(evidencePreview);
+  }, [evidencePreview]);
+
+  useEffect(() => {
+    setStatusIntent('');
+    setDismissReasons([]);
+    setDismissError('');
+    setEvidenceError('');
+    clearEvidence();
+  }, [post?.id, visible]);
+
+  if (!post) return null;
+
+  const canUpdate = isComplaintFeedback(post);
+  const resolutionOptions = RESOLUTION_OPTIONS.filter((value) => !['All', 'Not Started'].includes(value));
+  const isVerified = post.verificationStatus === 'Verified';
+  const isUnderReview = post.verificationStatus === 'Under Review';
+  const timeline = buildStatusTimeline(post);
+  const dismissReportItems = getDismissReportItems(post);
+  const selectedResolution = isVerified && resolutionOptions.includes(statusIntent) ? statusIntent : '';
+  const submitLabel = statusIntent || 'Select status';
+  const evidenceRequired = isVerified && Boolean(selectedResolution);
+  const verifyEvidenceOptional = isUnderReview && statusIntent === 'Verified';
+  const dismissSelected = isUnderReview && statusIntent === 'Dismissed';
+
+  function chooseEvidence(file) {
+    setEvidenceError('');
+    if (!file) return;
+    if (!file.type?.startsWith('image/')) {
+      setEvidenceError('Attach an image file as evidence.');
+      return;
+    }
+    if (evidencePreview) URL.revokeObjectURL(evidencePreview);
+    setEvidenceFile(file);
+    setEvidencePreview(URL.createObjectURL(file));
+  }
+
+  function clearEvidence() {
+    if (evidencePreview) URL.revokeObjectURL(evidencePreview);
+    setEvidenceFile(null);
+    setEvidencePreview('');
+    setEvidenceError('');
+    if (evidenceInputRef.current) evidenceInputRef.current.value = '';
+  }
+
+  function selectIntent(nextIntent) {
+    setStatusIntent(nextIntent);
+    setDismissError('');
+    setEvidenceError('');
+    if (nextIntent === 'Dismissed') clearEvidence();
+    if (nextIntent !== 'Dismissed') setDismissReasons([]);
+  }
+
+  function toggleDismissReason(reason) {
+    setDismissError('');
+    setDismissReasons((current) => (
+      current.includes(reason)
+        ? current.filter((item) => item !== reason)
+        : [...current, reason]
+    ));
+  }
+
+  async function submitStatus(nextVerification, nextResolution, options = {}) {
+    const { requireEvidence = false, adminNotes = null } = options;
+    if (requireEvidence && !evidenceFile) {
+      setEvidenceError('Attach photo evidence before submitting this status.');
+      return;
+    }
+
+    const statusKey = `${nextVerification}-${nextResolution}`;
+    setSavingStatus(statusKey);
+    setEvidenceError('');
+
+    let evidenceUrl = '';
+    if (evidenceFile) {
+      const { data, error } = await uploadMediaFiles([evidenceFile], {
+        ownerId: session?.user?.id ?? 'admin-status',
+        folder: 'status-evidence',
+      });
+      if (error) {
+        setEvidenceError(error.message ?? 'Unable to upload evidence.');
+        setSavingStatus('');
+        return;
+      }
+      evidenceUrl = data?.[0] ?? '';
+    }
+
+    const notes = [
+      adminNotes,
+      evidenceUrl ? `Status evidence: ${evidenceUrl}` : null,
+    ].filter(Boolean).join('\n') || null;
+
+    await onStatusPatch(post, nextVerification, nextResolution, { adminNotes: notes });
+    clearEvidence();
+    setStatusIntent('');
+    setDismissReasons([]);
+    setDismissError('');
+    setSavingStatus('');
+  }
+
+  function submitVerify() {
+    const nextResolution = post.resolutionStatus === 'Not Started' ? 'In Progress' : post.resolutionStatus;
+    submitStatus('Verified', nextResolution);
+  }
+
+  function submitDismiss() {
+    if (dismissReasons.length === 0) {
+      setDismissError('Select at least one dismissal reason.');
+      return;
+    }
+
+    submitStatus('Dismissed', post.resolutionStatus, {
+      adminNotes: `Dismiss reason: ${dismissReasons.join(', ')}`,
+    });
+  }
+
+  function submitResolution() {
+    if (!selectedResolution) return;
+    submitStatus('Verified', selectedResolution, { requireEvidence: true });
+  }
+
+  function renderEvidenceBox({ optional = false, required = false } = {}) {
+    return (
+      <div className={styles.evidenceBox}>
+        <div>
+          <strong>Photo evidence {required ? <span className={styles.requiredMark}>Required</span> : null}</strong>
+          <span>{optional ? 'Optional image for audit notes.' : 'Attach an image before submitting this status.'}</span>
+        </div>
+        {evidencePreview ? (
+          <div className={styles.evidencePreview}>
+            <img src={evidencePreview} alt="" />
+            <button type="button" onClick={clearEvidence}>Remove</button>
+          </div>
+        ) : (
+          <button type="button" className={styles.evidenceAttachButton} onClick={() => evidenceInputRef.current?.click()}>
+            <Paperclip size={16} weight="bold" />
+            Attach photo
+          </button>
+        )}
+        <input
+          ref={evidenceInputRef}
+          className={styles.fileInput}
+          type="file"
+          accept="image/*"
+          onChange={(event) => chooseEvidence(event.target.files?.[0])}
+        />
+        {evidenceError ? <span className={styles.evidenceError}>{evidenceError}</span> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={[styles.feedbackModalOverlay, visible ? styles.feedbackModalOverlayVisible : ''].join(' ')}
+      onMouseDown={onClose}
+    >
+      <section
+        className={[styles.statusModal, visible ? styles.feedbackModalVisible : ''].join(' ')}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="status-update-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className={styles.statusModalHeader}>
+          <div>
+            <h2 id="status-update-title" className={styles.statusModalTitle}>Update status</h2>
+          </div>
+          <button type="button" className={styles.feedbackModalClose} onClick={onClose} aria-label="Close status update">
+            <X size={20} weight="bold" />
+          </button>
+        </header>
+
+        <div className={styles.statusModalBody}>
+          <section className={styles.statusTimelinePanel}>
+            <div className={styles.statusPanelHeader}>
+              <strong>Status Timeline</strong>
+              <span>Current progress for this feedback.</span>
+            </div>
+            <div className={styles.statusTimelineList}>
+              {timeline.map((item) => (
+                <div key={item.key} className={styles.statusTimelineItem}>
+                  <span className={`${styles.statusTimelineDot} ${styles[`statusTimelineDot_${item.state}`]}`} aria-hidden="true" />
+                  <div>
+                    <strong>{item.label}</strong>
+                    <span>{item.value}</span>
+                    <p>{item.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {!canUpdate ? (
+            <section className={styles.statusNotice}>
+              <strong>Status updates are for complaint feedback.</strong>
+              <span>This feedback can still be reviewed in the discussion modal.</span>
+            </section>
+          ) : (
+            <section className={styles.statusUpdatePanel}>
+              <div className={styles.statusPanelHeader}>
+                <strong>Update</strong>
+                <span>{isUnderReview ? 'Choose the next verification action.' : 'Choose the next resolution status.'}</span>
+              </div>
+
+              {isUnderReview ? (
+                <section className={styles.statusFlowSection}>
+                  <div className={styles.statusChoiceGridCompact}>
+                    <button
+                      type="button"
+                      className={`${styles.statusChoiceButton} ${statusIntent === 'Verified' ? styles.statusChoiceButtonActive : ''}`}
+                      onClick={() => selectIntent('Verified')}
+                      disabled={Boolean(savingStatus)}
+                    >
+                      <strong>Verify</strong>
+                      <span>{getVerificationDescription('Verified')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`${styles.statusChoiceButton} ${statusIntent === 'Dismissed' ? styles.statusChoiceButtonActive : ''}`}
+                      onClick={() => selectIntent('Dismissed')}
+                      disabled={Boolean(savingStatus)}
+                    >
+                      <strong>Dismiss</strong>
+                      <span>{getVerificationDescription('Dismissed')}</span>
+                    </button>
+                  </div>
+
+                  {verifyEvidenceOptional ? (
+                    <>
+                      {renderEvidenceBox({ optional: true })}
+                      <button
+                        type="button"
+                        className={styles.statusSubmitButton}
+                        onClick={submitVerify}
+                        disabled={Boolean(savingStatus)}
+                      >
+                        {savingStatus ? 'Verifying...' : 'Verify'}
+                      </button>
+                    </>
+                  ) : null}
+
+                  {dismissSelected ? (
+                    <>
+                      <div className={styles.dismissReportsBox}>
+                        <div className={styles.dismissReportsHeader}>
+                          <strong>Reports</strong>
+                          <span>{dismissReportItems.length || 0} linked to this feedback.</span>
+                        </div>
+                        <div className={styles.dismissReportsList}>
+                          {dismissReportItems.length > 0 ? (
+                            dismissReportItems.map((report) => (
+                              <article key={report.id} className={styles.dismissReportItem}>
+                                <FlagBanner size={16} weight="duotone" aria-hidden="true" />
+                                <div>
+                                  <strong>{report.title}</strong>
+                                  <span>{report.meta}</span>
+                                </div>
+                              </article>
+                            ))
+                          ) : (
+                            <div className={styles.dismissReportsEmpty}>No citizen reports are linked to this feedback.</div>
+                          )}
+                        </div>
+                      </div>
+                      <div className={styles.dismissReasonBox}>
+                        <div className={styles.dismissReasonHeader}>
+                          <strong>Dismiss reason</strong>
+                          <span>Select all that apply.</span>
+                        </div>
+                        <div className={styles.dismissReasonList} role="group" aria-label="Dismiss reasons">
+                          {DISMISS_REASON_OPTIONS.map((reason) => {
+                            const checked = dismissReasons.includes(reason);
+                            return (
+                              <label
+                                key={reason}
+                                className={`${styles.dismissReasonOption} ${checked ? styles.dismissReasonOptionActive : ''}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleDismissReason(reason)}
+                                  disabled={Boolean(savingStatus)}
+                                />
+                                <span className={styles.dismissReasonMarker} aria-hidden="true">
+                                  {checked ? <FlagBanner size={16} weight="fill" /> : null}
+                                </span>
+                                <span className={styles.dismissReasonLabel}>{reason}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        {dismissError ? <span className={styles.evidenceError}>{dismissError}</span> : null}
+                      </div>
+                      <button
+                        type="button"
+                        className={`${styles.statusSubmitButton} ${styles.statusSubmitButtonDanger}`}
+                        onClick={submitDismiss}
+                        disabled={Boolean(savingStatus)}
+                      >
+                        {savingStatus ? 'Dismissing...' : 'Dismiss'}
+                      </button>
+                    </>
+                  ) : null}
+                </section>
+              ) : (
+                <section className={`${styles.statusFlowSection} ${!isVerified ? styles.statusFlowSectionMuted : ''}`}>
+                  <div className={styles.statusFlowHeader}>
+                    <span className={styles.statusStepNumber}>1</span>
+                    <div>
+                      <strong>Resolution</strong>
+                      <span>{isVerified ? 'Select the next status, then attach photo evidence.' : 'Resolution updates appear after verification.'}</span>
+                    </div>
+                  </div>
+                  {isVerified ? (
+                    <div className={styles.statusChoiceGrid}>
+                      {resolutionOptions.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          className={`${styles.statusChoiceButton} ${statusIntent === option ? styles.statusChoiceButtonActive : ''}`}
+                          onClick={() => selectIntent(option)}
+                          disabled={post.resolutionStatus === option || Boolean(savingStatus)}
+                        >
+                          <strong>{option}</strong>
+                          <span>{getResolutionDescription(option)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className={styles.statusLockedRow}>
+                      This feedback cannot be updated from its current status.
+                    </div>
+                  )}
+
+                  {selectedResolution ? (
+                    <>
+                      {renderEvidenceBox({ required: true })}
+                      <button
+                        type="button"
+                        className={styles.statusSubmitButton}
+                        onClick={submitResolution}
+                        disabled={Boolean(savingStatus)}
+                      >
+                        {savingStatus ? 'Updating...' : submitLabel}
+                      </button>
+                    </>
+                  ) : null}
+                </section>
+              )}
+            </section>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function FeedbackDiscussionContent({ post }) {
+  const [refresh, setRefresh] = useState(0);
+  const [sortMode, setSortMode] = useState('lgu-response');
+  const [expandedReplies, setExpandedReplies] = useState({});
+  const { discussions, loading, error: discussionsError } = useDiscussions(post?.id, refresh);
+
+  const discussionGroups = useMemo(() => buildDiscussionGroups(discussions, sortMode), [discussions, sortMode]);
+  const activeDiscussionCount = discussionGroups.length;
+  const allTopLevelDiscussionCount = useMemo(
+    () => discussions.filter((discussion) => !discussion.parentId).length,
+    [discussions],
+  );
+
+  useEffect(() => {
+    const handleRefresh = () => setRefresh((current) => current + 1);
+    window.addEventListener('citicontrol:refresh-discussions', handleRefresh);
+    return () => window.removeEventListener('citicontrol:refresh-discussions', handleRefresh);
+  }, []);
+
+  function getVisibleReplyCount(group) {
+    if (!group?.replies?.length) return 0;
+    return expandedReplies[group.id] ?? 0;
+  }
+
+  function handleShowMoreReplies(group) {
+    setExpandedReplies((current) => ({
+      ...current,
+      [group.id]: Math.min(group.replies.length, getVisibleReplyCount(group) + DEFAULT_VISIBLE_REPLIES),
+    }));
+  }
+
+  function handleCollapseReplies(group) {
+    setExpandedReplies((current) => ({ ...current, [group.id]: 0 }));
+  }
+
+  function renderMedia(url) {
+    if (!url) return null;
+    if (isImage(url)) {
+      return (
+        <a className={styles.mediaAttachment} href={url} target="_blank" rel="noreferrer">
+          <img src={url} alt="" />
+        </a>
+      );
+    }
+    if (isVideo(url)) {
+      return (
+        <div className={styles.mediaAttachment}>
+          <video src={url} controls playsInline preload="metadata" />
+        </div>
+      );
+    }
+    return <a className={styles.attachment} href={url} target="_blank" rel="noreferrer">{url}</a>;
+  }
+
+  if (!post) return null;
+
+  return (
+    <div className={styles.discussContainer}>
+      <div className={styles.cardWrap}>
+        <FeedbackDiscussCard post={{ ...post, discuss: allTopLevelDiscussionCount }} />
+      </div>
+
+      <section className={styles.discussSection}>
+        <div className={styles.statsRow}>
+          <div className={styles.statsLeft}>
+            <strong>{activeDiscussionCount} {activeDiscussionCount === 1 ? 'discussion' : 'discussions'}</strong>
+          </div>
+          <div className={styles.statsRight}>
+            <button type="button" className={`${styles.filterBtn} ${sortMode === 'lgu-response' ? styles.filterBtnActive : ''}`} onClick={() => setSortMode('lgu-response')}>
+              LGU Response
+            </button>
+            <button type="button" className={`${styles.filterBtn} ${sortMode === 'popular' ? styles.filterBtnActive : ''}`} onClick={() => setSortMode('popular')}>
+              Popular
+            </button>
+            <button type="button" className={`${styles.filterBtn} ${sortMode === 'recent' ? styles.filterBtnActive : ''}`} onClick={() => setSortMode('recent')}>
+              Recent
+            </button>
+          </div>
+        </div>
+
+        <div className={styles.thread}>
+          {loading ? <DiscussionThreadSkeleton /> : null}
+          {!loading && discussionsError ? <div className={styles.threadError}>Discussion could not load.</div> : null}
+
+          {!loading && discussionGroups.map((discussion) => {
+            const visibleReplyCount = getVisibleReplyCount(discussion);
+            const visibleReplies = discussion.replies.slice(0, visibleReplyCount);
+            const hiddenReplyCount = Math.max(0, discussion.replies.length - visibleReplyCount);
+            const showMoreCount = Math.min(DEFAULT_VISIBLE_REPLIES, hiddenReplyCount);
+            return (
+              <article key={discussion.id} className={styles.discussionCard}>
+                <div className={styles.discussionHeader}>
+                  <div className={styles.avatar} style={(discussion.author.bg?.startsWith?.('/avatars/') || discussion.author.bg?.startsWith?.('http')) ? { backgroundImage: `url(${discussion.author.bg})` } : { background: discussion.author.bg }}>
+                    {!(discussion.author.bg?.startsWith?.('/avatars/') || discussion.author.bg?.startsWith?.('http')) ? discussion.author.initials : null}
+                  </div>
+                  <div className={styles.discussionHeaderMeta}>
+                    <div className={styles.discussionAuthorRow}>
+                      <span className={styles.name}>{discussion.author.fullName}</span>
+                      {discussion.isAdmin ? <span className={styles.badge}>Admin</span> : null}
+                      {discussion.isPinned ? <span className={styles.badgePinned}>LGU Response</span> : null}
+                    </div>
+                    <div className={styles.discussionTime}>{discussion.displayTime}</div>
+                  </div>
+                </div>
+
+                <div className={styles.discussionBody}>{discussion.body}</div>
+                {renderMedia(discussion.imageUrl)}
+
+                <div className={styles.discussionFooter}>
+                  <span className={styles.replyCountLabel}>{discussion.replies.length} {discussion.replies.length === 1 ? 'reply' : 'replies'}</span>
+                  <span className={styles.footerDivider} aria-hidden="true" />
+                  <Tooltip content={`${formatCount(discussion.likes ?? 0)} ${Number(discussion.likes ?? 0) === 1 ? 'raise' : 'raises'}`}>
+                    <span className={styles.discussionMetric} tabIndex={0} aria-label={`${formatCount(discussion.likes ?? 0)} raises`}>
+                      <TrayArrowUp size={15} weight="regular" aria-hidden="true" />
+                      <span>{formatCount(discussion.likes ?? 0)}</span>
+                    </span>
+                  </Tooltip>
+                </div>
+
+                {visibleReplies.length > 0 ? (
+                  <div className={styles.replyList}>
+                    {visibleReplies.map((reply) => (
+                        <div key={reply.id} className={styles.replyCard}>
+                          <div className={styles.replyHeader}>
+                            <div className={styles.avatar} style={(reply.author.bg?.startsWith?.('/avatars/') || reply.author.bg?.startsWith?.('http')) ? { backgroundImage: `url(${reply.author.bg})` } : { background: reply.author.bg }}>
+                              {!(reply.author.bg?.startsWith?.('/avatars/') || reply.author.bg?.startsWith?.('http')) ? reply.author.initials : null}
+                            </div>
+                            <div className={styles.replyMeta}>
+                              <div className={styles.replyNames}>
+                                <span className={styles.replyAuthor}>{reply.author.fullName}</span>
+                                {reply.replyTarget ? (
+                                  <>
+                                    <span className={styles.replyArrow} aria-hidden="true">&gt;</span>
+                                    <span className={styles.replyTarget}>{reply.replyTarget}</span>
+                                  </>
+                                ) : null}
+                              </div>
+                              <div className={styles.replyTime}>{reply.displayTime}</div>
+                            </div>
+                          </div>
+                          <div className={styles.replyBody}>{reply.body}</div>
+                          {renderMedia(reply.imageUrl)}
+                          <div className={styles.replyFooter}>
+                            <Tooltip content={`${formatCount(reply.likes ?? 0)} ${Number(reply.likes ?? 0) === 1 ? 'raise' : 'raises'}`}>
+                              <span className={styles.discussionMetric} tabIndex={0} aria-label={`${formatCount(reply.likes ?? 0)} raises`}>
+                                <TrayArrowUp size={15} weight="regular" aria-hidden="true" />
+                                <span>{formatCount(reply.likes ?? 0)}</span>
+                              </span>
+                            </Tooltip>
+                          </div>
+                        </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {discussion.replies.length > 0 ? (
+                  <div className={`${styles.replyToggleRow} ${visibleReplyCount > 0 ? styles.replyToggleRowIndented : ''}`}>
+                    {showMoreCount > 0 ? (
+                      <button type="button" className={styles.replyToggleBtn} onClick={() => handleShowMoreReplies(discussion)}>
+                        {visibleReplyCount > 0
+                          ? `Show ${showMoreCount} more ${showMoreCount === 1 ? 'reply' : 'replies'}`
+                          : `Show ${showMoreCount} ${showMoreCount === 1 ? 'reply' : 'replies'}`}
+                      </button>
+                    ) : null}
+                    {visibleReplyCount > 0 ? (
+                      <button type="button" className={styles.replyToggleBtn} onClick={() => handleCollapseReplies(discussion)}>Collapse replies</button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+
+        {!loading && !discussionsError && discussionGroups.length === 0 ? (
+          <div className={styles.emptyCompactState}>
+            <span className={styles.emptyBee} role="img" aria-label="Bee">🐝</span>
+            <p>{sortMode === 'lgu-response' ? 'No LGU response yet' : 'No discussion yet'}</p>
+            <span>{sortMode === 'lgu-response' ? 'Add an official response so citizens can see the admin update first.' : 'Citizen discussion will appear here for review.'}</span>
+          </div>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
 export default function FeedbacksPage() {
   const workspace = useAdminWorkspace();
   const [query, setQuery] = useState('');
@@ -254,6 +1388,9 @@ export default function FeedbacksPage() {
   const [barangayFilter, setBarangayFilter] = useState('all');
   const [page, setPage] = useState(0);
   const [selectedPostId, setSelectedPostId] = useState(null);
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [statusPostId, setStatusPostId] = useState(null);
+  const [statusModalVisible, setStatusModalVisible] = useState(false);
   const [reportsOpen, setReportsOpen] = useState(false);
   const [dismissReasonDraft, setDismissReasonDraft] = useState('');
   const [dismissMode, setDismissMode] = useState(false);
@@ -261,6 +1398,8 @@ export default function FeedbacksPage() {
   const [routingDrafts, setRoutingDrafts] = useState({});
   const [selectedPostIds, setSelectedPostIds] = useState([]);
   const [pageInput, setPageInput] = useState('1');
+  const closeTimerRef = useRef(null);
+  const statusCloseTimerRef = useRef(null);
   const hasActiveFilters = Boolean(
     query.trim()
     || verificationFilter !== 'All'
@@ -340,6 +1479,7 @@ export default function FeedbacksPage() {
   const totalRecords = isFilteredView ? filteredPosts.length : count;
   const totalPages = Math.max(1, Math.ceil(totalRecords / PAGE_SIZE));
   const selectedPost = filteredPosts.find((post) => post.id === selectedPostId) ?? null;
+  const statusPost = filteredPosts.find((post) => post.id === statusPostId) ?? null;
   const visiblePostIds = pagedPosts.map((post) => String(post.id));
   const allVisibleSelected = visiblePostIds.length > 0 && visiblePostIds.every((id) => selectedPostIds.includes(id));
   const selectedPosts = useMemo(
@@ -361,6 +1501,48 @@ export default function FeedbacksPage() {
   }, [selectedPost, selectedPostId]);
 
   useEffect(() => {
+    if (!statusPost && statusPostId != null) {
+      setStatusPostId(null);
+      setStatusModalVisible(false);
+    }
+  }, [statusPost, statusPostId]);
+
+  useEffect(() => {
+    if (!selectedPost) {
+      setDetailVisible(false);
+      return undefined;
+    }
+
+    const showTimer = window.setTimeout(() => setDetailVisible(true), 10);
+    const unlockPageScroll = lockPageScroll();
+
+    return () => {
+      window.clearTimeout(showTimer);
+      unlockPageScroll();
+    };
+  }, [selectedPost]);
+
+  useEffect(() => {
+    if (!statusPost) {
+      setStatusModalVisible(false);
+      return undefined;
+    }
+
+    const showTimer = window.setTimeout(() => setStatusModalVisible(true), 10);
+    const unlockPageScroll = lockPageScroll();
+
+    return () => {
+      window.clearTimeout(showTimer);
+      unlockPageScroll();
+    };
+  }, [statusPost]);
+
+  useEffect(() => () => {
+    if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+    if (statusCloseTimerRef.current) window.clearTimeout(statusCloseTimerRef.current);
+  }, []);
+
+  useEffect(() => {
     if (selectedPost) {
       setDismissReasonDraft('');
     }
@@ -371,7 +1553,7 @@ export default function FeedbacksPage() {
     setSelectedPostIds((current) => current.filter((id) => filteredPosts.some((post) => String(post.id) === id)));
   }, [filteredPosts, isFilteredView]);
 
-  async function handleStatusPatch(post, nextVerification, nextResolution) {
+  async function handleStatusPatch(post, nextVerification, nextResolution, options = {}) {
     if (!isComplaintFeedback(post)) {
       showToast('Only complaint feedback can be updated.', 'warning');
       return;
@@ -379,7 +1561,7 @@ export default function FeedbacksPage() {
 
     try {
       const nextStatus = composeStatus(nextVerification, nextResolution);
-      await changeStatus(post.id, nextStatus);
+      await changeStatus(post.id, nextStatus, options);
       showToast(`Feedback ${post.feedbackNo ?? ''} updated to ${nextStatus}.`, 'success');
       await reload();
     } catch (error) {
@@ -407,7 +1589,7 @@ export default function FeedbacksPage() {
 
     const draft = responseDrafts[post.id] ?? '';
     if (!draft.trim()) return;
-    showToast('Pinned response saved locally.', 'info', 3000);
+    showToast('Official response saved locally.', 'info', 3000);
   }
 
   function handleRouteAction(post, type) {
@@ -420,6 +1602,46 @@ export default function FeedbacksPage() {
         ? `Transfer queued for ${destination}.`
         : `Reassignment queued for ${destination}.`;
     showToast(message, 'info', 3000);
+  }
+
+  function openFeedbackDetail(postId) {
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+
+    setSelectedPostId(postId);
+    setReportsOpen(false);
+    setDismissMode(false);
+  }
+
+  function openFeedbackUpdate(post) {
+    if (statusCloseTimerRef.current) {
+      window.clearTimeout(statusCloseTimerRef.current);
+      statusCloseTimerRef.current = null;
+    }
+
+    setStatusPostId(post.id);
+  }
+
+  function closeFeedbackDetail() {
+    setDetailVisible(false);
+    if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = window.setTimeout(() => {
+      setSelectedPostId(null);
+      setReportsOpen(false);
+      setDismissMode(false);
+      closeTimerRef.current = null;
+    }, DETAIL_CLOSE_ANIMATION_MS);
+  }
+
+  function closeFeedbackUpdate() {
+    setStatusModalVisible(false);
+    if (statusCloseTimerRef.current) window.clearTimeout(statusCloseTimerRef.current);
+    statusCloseTimerRef.current = window.setTimeout(() => {
+      setStatusPostId(null);
+      statusCloseTimerRef.current = null;
+    }, DETAIL_CLOSE_ANIMATION_MS);
   }
 
   function clearFilters() {
@@ -562,7 +1784,7 @@ export default function FeedbacksPage() {
       label: 'NO.',
       width: 60,
       render: (post) => (
-        <button type="button" className={styles.tableTrigger} onClick={() => setSelectedPostId(post.id)}>
+        <button type="button" className={styles.tableTrigger} onClick={() => openFeedbackDetail(post.id)}>
           <span className={styles.feedbackNumber}>{getDisplayFeedbackNo(post.feedbackNo)}</span>
         </button>
       ),
@@ -595,7 +1817,7 @@ export default function FeedbacksPage() {
       key: 'preview',
       label: 'Preview',
       render: (post) => (
-        <button type="button" className={styles.feedbackPreview} onClick={() => setSelectedPostId(post.id)}>
+        <button type="button" className={styles.feedbackPreview} onClick={() => openFeedbackDetail(post.id)}>
           {getPreviewText(post.content)}
         </button>
       ),
@@ -656,33 +1878,23 @@ export default function FeedbacksPage() {
     {
       key: 'actions',
       label: 'Actions',
-      width: 100,
+      width: 120,
       render: (post) => (
         <div className={styles.actionColumn}>
           <button
             type="button"
             className={styles.actionLink}
-            onClick={() => {
-              setSelectedPostId(post.id);
-              setReportsOpen(false);
-              setDismissMode(false);
-            }}
+            onClick={() => openFeedbackDetail(post.id)}
           >
             View
           </button>
-          {isComplaintFeedback(post) ? (
-            <button
-              type="button"
-              className={styles.actionLink}
-              onClick={() => {
-                setSelectedPostId(post.id);
-                setReportsOpen(false);
-                setDismissMode(false);
-              }}
-            >
-              Update
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className={styles.actionLink}
+            onClick={() => openFeedbackUpdate(post)}
+          >
+            Update
+          </button>
         </div>
       ),
     },
@@ -849,186 +2061,51 @@ export default function FeedbacksPage() {
         </div>
       ) : null}
 
-      <div className={styles.drawerShell} data-open={selectedPost ? 'true' : 'false'}>
-        <button type="button" className={styles.drawerBackdrop} onClick={() => setSelectedPostId(null)} aria-label="Close feedback detail" />
-        <aside className={styles.drawer}>
+      <div
+        className={[styles.feedbackModalOverlay, selectedPost && detailVisible ? styles.feedbackModalOverlayVisible : ''].join(' ')}
+        onMouseDown={closeFeedbackDetail}
+      >
+        <section
+          className={[styles.feedbackModal, selectedPost && detailVisible ? styles.feedbackModalVisible : ''].join(' ')}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="feedback-detail-title"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
           {selectedPost ? (
             <>
-              <div className={styles.drawerHeader}>
-                <div>
-                  <button type="button" className={styles.drawerBack} onClick={() => setSelectedPostId(null)}>
-                    Back to list
-                  </button>
-                  <h2 className={styles.drawerTitle}>{getDisplayFeedbackNo(selectedPost.feedbackNo)}: {selectedPost.service ?? 'General'}</h2>
-                  <div className={styles.drawerSubmeta}>
-                    Submitted by {getDisplayHandle(selectedPost.handle)}, {selectedPost.created_at ? new Date(selectedPost.created_at).toLocaleString('en-PH') : '-'}, {selectedPost.location || 'No barangay'}
-                  </div>
-                </div>
-                <Button variant="ghost" size="icon" onClick={() => setSelectedPostId(null)} aria-label="Close detail">
-                  <X size={16} weight="bold" />
-                </Button>
+              <header className={styles.feedbackModalHeader}>
+                <h2 id="feedback-detail-title" className={styles.feedbackModalTitle}>
+                  {getDisplayHandle(selectedPost.handle)}'s feedback
+                </h2>
+                <button type="button" className={styles.feedbackModalClose} onClick={closeFeedbackDetail} aria-label="Close detail">
+                  <X size={20} weight="bold" />
+                </button>
+              </header>
+
+              <div className={styles.feedbackModalContent}>
+                <FeedbackDiscussionContent post={selectedPost} />
               </div>
 
-              {selectedPost.aiFlagged ? (
-                <div className={styles.neutralBanner}>
-                  <div className={styles.neutralBannerTitle}>AI flag</div>
-                  <div className={styles.neutralBannerText}>{selectedPost.aiFlagReason}</div>
-                  {isComplaintFeedback(selectedPost) ? (
-                    <div className={styles.buttonRow} style={{ marginTop: 10 }}>
-                      <Button variant="secondary" size="sm" onClick={() => handleStatusPatch(selectedPost, 'Dismissed', selectedPost.resolutionStatus)}>Dismiss</Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleStatusPatch(selectedPost, 'Verified', selectedPost.resolutionStatus)}>Verify</Button>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              <div className={styles.drawerBlock}>
-                <section className={styles.drawerSection}>
-                  <div className={styles.panelTitle}>Feedback Content</div>
-                  <div className={styles.cellBody} style={{ marginTop: 10 }}>{selectedPost.content || 'No content available.'}</div>
-                  {selectedPost.imageUrl ? <div className={styles.cellSub}>Attachment: {selectedPost.imageUrl}</div> : null}
-                </section>
-
-                <section className={styles.drawerSection}>
-                  <div className={styles.panelTitle}>Status</div>
-                  {isComplaintFeedback(selectedPost) ? (
-                    <div className={styles.statusRail} style={{ marginTop: 12 }}>
-                      <div className={styles.statusBlock}>
-                        <span className={styles.statusBlockLabel}>Verification</span>
-                        <select className={styles.select} value={selectedPost.verificationStatus} onChange={(event) => handleStatusPatch(selectedPost, event.target.value, selectedPost.resolutionStatus)}>
-                          {VERIFICATION_OPTIONS.filter((value) => value !== 'All').map((value) => <option key={value} value={value}>{value}</option>)}
-                        </select>
-                      </div>
-                      <div className={styles.statusBlock}>
-                        <span className={styles.statusBlockLabel}>Resolution</span>
-                        <select
-                          className={styles.select}
-                          value={selectedPost.resolutionStatus}
-                          disabled={selectedPost.verificationStatus === 'Dismissed'}
-                          onChange={(event) => handleStatusPatch(selectedPost, selectedPost.verificationStatus, event.target.value)}
-                        >
-                          {RESOLUTION_OPTIONS.filter((value) => value !== 'All').map((value) => <option key={value} value={value}>{value}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className={styles.neutralBanner} style={{ marginTop: 12 }}>
-                      <div className={styles.neutralBannerTitle}>Read-only feedback</div>
-                      <div className={styles.neutralBannerText}>Only complaint feedback can be updated.</div>
-                    </div>
-                  )}
-                </section>
-
-                <section className={styles.collapsible}>
-                  <button type="button" className={styles.collapsibleHeader} onClick={() => setReportsOpen((current) => !current)}>
-                    <span className={styles.panelTitle}>Reports, {selectedPost.reportCount}</span>
-                    <span className={styles.statusPill}>{reportsOpen ? 'Hide' : 'Show'}</span>
-                  </button>
-                  {reportsOpen ? (
-                    <div className={styles.collapsibleBody}>
-                      {selectedPost.reportCount ? selectedPost.reportReasons.map((reason, index) => (
-                        <div key={`${reason}-${index}`} className={styles.reportItem}>
-                          <div className={styles.cellTitle}>{reason}</div>
-                          <div className={styles.cellSub}>{selectedPost.reportHandles[index] ?? '@unknown'}</div>
-                        </div>
-                      )) : <div className={styles.cellSub}>No reports for this feedback.</div>}
-                    </div>
-                  ) : null}
-                </section>
-
-                <section className={styles.drawerSection}>
-                  <div className={styles.panelTitle}>Official Response</div>
-                  <div className={styles.responseBox} style={{ marginTop: 12 }}>
-                    <span className={styles.responseLabel}>Pinned response</span>
-                    <textarea
-                      className={styles.textarea}
-                      value={responseDrafts[selectedPost.id] ?? ''}
-                      onChange={(event) => setResponseDrafts((current) => ({ ...current, [selectedPost.id]: event.target.value }))}
-                      placeholder={`Response from ${selectedPost.office}`}
-                    />
-                    {isComplaintFeedback(selectedPost) ? (
-                      <div className={styles.buttonRow} style={{ marginTop: 10 }}>
-                        <Button variant="secondary" size="sm" onClick={() => handleResponseSave(selectedPost)}>Add / Edit Response</Button>
-                      </div>
-                    ) : (
-                      <div className={styles.cellSub} style={{ marginTop: 10 }}>Only complaint feedback can be updated.</div>
-                    )}
-                  </div>
-                </section>
-
-                <section className={styles.drawerSection}>
-                  <div className={styles.panelTitle}>Actions</div>
-                  {isComplaintFeedback(selectedPost) ? (
-                    <div className={styles.actionStrip} style={{ marginTop: 12 }}>
-                      {workspace.isLGUAdmin ? (
-                        <>
-                          <select
-                            className={styles.select}
-                            value={(routingDrafts[selectedPost.id] ?? {}).office ?? ''}
-                            onChange={(event) => setRoutingDrafts((current) => ({ ...current, [selectedPost.id]: { ...(current[selectedPost.id] ?? {}), office: event.target.value } }))}
-                          >
-                            <option value="">Transfer Office</option>
-                            {officeOptions.map((office) => <option key={office} value={office}>{office}</option>)}
-                          </select>
-                          <Button variant="secondary" size="sm" onClick={() => handleRouteAction(selectedPost, 'transferOffice')}>Transfer</Button>
-                          <select
-                            className={styles.select}
-                            value={(routingDrafts[selectedPost.id] ?? {}).barangay ?? ''}
-                            onChange={(event) => setRoutingDrafts((current) => ({ ...current, [selectedPost.id]: { ...(current[selectedPost.id] ?? {}), barangay: event.target.value } }))}
-                          >
-                            <option value="">Delegate to Barangay</option>
-                            {barangayOptions.map((barangay) => <option key={barangay} value={barangay}>{barangay}</option>)}
-                          </select>
-                          <Button variant="secondary" size="sm" onClick={() => handleRouteAction(selectedPost, 'delegate')}>Delegate</Button>
-                        </>
-                      ) : null}
-                      {workspace.isSuperAdmin ? (
-                        <>
-                          <select
-                            className={styles.select}
-                            value={(routingDrafts[selectedPost.id] ?? {}).office ?? ''}
-                            onChange={(event) => setRoutingDrafts((current) => ({ ...current, [selectedPost.id]: { ...(current[selectedPost.id] ?? {}), office: event.target.value } }))}
-                          >
-                            <option value="">Reassign Office</option>
-                            {officeOptions.map((office) => <option key={office} value={office}>{office}</option>)}
-                          </select>
-                          <Button variant="secondary" size="sm" onClick={() => handleRouteAction(selectedPost, 'reassignOffice')}>Reassign Office</Button>
-                          <select
-                            className={styles.select}
-                            value={(routingDrafts[selectedPost.id] ?? {}).barangay ?? ''}
-                            onChange={(event) => setRoutingDrafts((current) => ({ ...current, [selectedPost.id]: { ...(current[selectedPost.id] ?? {}), barangay: event.target.value } }))}
-                          >
-                            <option value="">Reassign Barangay</option>
-                            {barangayOptions.map((barangay) => <option key={barangay} value={barangay}>{barangay}</option>)}
-                          </select>
-                          <Button variant="secondary" size="sm" onClick={() => handleRouteAction(selectedPost, 'reassignBarangay')}>Reassign Barangay</Button>
-                        </>
-                      ) : null}
-                      <Button variant="outline" size="sm" onClick={() => setDismissMode((current) => !current)}>Dismiss with Reason</Button>
-                    </div>
-                  ) : (
-                    <div className={styles.neutralBanner} style={{ marginTop: 12 }}>
-                      <div className={styles.neutralBannerTitle}>Read-only actions</div>
-                      <div className={styles.neutralBannerText}>Routing and dismissal are available for complaint feedback only.</div>
-                    </div>
-                  )}
-
-                  {dismissMode ? (
-                    <div className={styles.inlineForm}>
-                      <label className={styles.fieldLabel}>Dismissal reason</label>
-                      <textarea className={styles.textarea} value={dismissReasonDraft} onChange={(event) => setDismissReasonDraft(event.target.value)} />
-                      <div className={styles.buttonRow}>
-                        <Button variant="destructive" size="sm" onClick={() => handleDismiss(selectedPost)}>Confirm Dismissal</Button>
-                        <Button variant="ghost" size="sm" onClick={() => setDismissMode(false)}>Cancel</Button>
-                      </div>
-                    </div>
-                  ) : null}
-                </section>
-              </div>
+              <footer className={styles.feedbackModalFooter}>
+                <DiscussionComposer
+                  postId={selectedPost.id}
+                  onSent={() => {
+                    window.dispatchEvent(new CustomEvent('citicontrol:refresh-discussions'));
+                  }}
+                />
+              </footer>
             </>
           ) : null}
-        </aside>
+        </section>
       </div>
+
+      <StatusUpdateModal
+        post={statusPost}
+        visible={Boolean(statusPost && statusModalVisible)}
+        onClose={closeFeedbackUpdate}
+        onStatusPatch={handleStatusPatch}
+      />
     </div>
   );
 }

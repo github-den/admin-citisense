@@ -1,0 +1,204 @@
+.blurBg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(120px) saturate(0.85) brightness(1.12);
+  opacity: 0.18;
+  z-index: 0;
+  transform: scale(2);
+}
+
+.media {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  transition: transform 0.18s var(--ease-out);
+}
+
+.clickable {
+  cursor: zoom-in;
+}
+
+.videoWrapper,
+.imageWrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 2px;
+}
+
+.removeBtn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--red);
+  box-shadow: none;
+}
+
+.removeBtn:hover {
+  border-color: color-mix(in srgb, var(--red) 54%, white);
+  background: var(--red-light);
+  color: var(--red);
+}
+
+.carousel {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  --carousel-control-zone: clamp(44px, 10%, 76px);
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--ui-border);
+  background: #f3f6fa;
+}
+
+.carousel:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.carouselContent {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.carouselMediaButton {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  cursor: pointer;
+}
+
+.carouselControl {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  color: transparent;
+  background: transparent;
+  transform: none;
+  transition: background-color 140ms var(--ease-out);
+}
+
+.carouselControl:hover {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.carouselPrevious {
+  left: 0;
+  width: var(--carousel-control-zone);
+  padding-left: 8px;
+  padding-right: 0;
+  align-items: flex-start;
+}
+
+.carouselNext {
+  right: 0;
+  width: var(--carousel-control-zone);
+  padding-left: 0;
+  padding-right: 8px;
+  align-items: flex-end;
+}
+
+.carouselControlIcon {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: rgb(255, 255, 255);
+  box-shadow: none;
+  opacity: 0;
+  transition: opacity 140ms var(--ease-out), color 140ms var(--ease-out);
+}
+
+.carouselControl:hover .carouselControlIcon {
+  background: transparent;
+  color: var(--ui-accent);
+  opacity: 1;
+}
+
+.carouselDots {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transform: translateX(-50%);
+}
+
+.carouselDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 1px 5px rgba(15, 23, 42, 0.24);
+}
+
+.carouselDotActive {
+  background: rgb(255, 255, 255);
+}
+
+.playOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.playOverlay:hover {
+  background: rgba(15, 23, 42, 0.24);
+}
+
+.playButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ui-accent);
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.2);
+  transform: scale(0.95);
+  transition: transform 0.2s var(--ease-out), background 0.2s;
+}
+
+.playOverlay:hover .playButton {
+  transform: scale(1);
+  background: rgb(255, 255, 255);
+}

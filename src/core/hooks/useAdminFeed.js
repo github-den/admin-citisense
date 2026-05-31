@@ -25,8 +25,8 @@ export function useAdminFeed(filters = {}) {
     load();
   }, [load]);
 
-  async function changeStatus(postId, status) {
-    await updatePostStatus(postId, status);
+  async function changeStatus(postId, status, options = {}) {
+    await updatePostStatus(postId, status, options);
     await load();
   }
 
