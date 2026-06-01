@@ -7,7 +7,7 @@ import {
   createPresetAdminDateRange,
   isDefaultAdminDateRange,
 } from '@core/lib/adminDateRange.js';
-import styles from '../../screens/DashboardPage/DashboardDateRangeFilter.module.css';
+import styles from '../../pages/DashboardPage/DashboardDateRangeFilter.module.css';
 
 const DEFAULT_PRESET_OPTIONS = [
   { value: 'all', label: 'All time' },

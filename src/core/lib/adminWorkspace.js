@@ -13,19 +13,16 @@ export const ROLE_PAGE_CONFIG = {
   [USER_ROLES.LGU_ADMIN]: [
     { key: 'dashboard', icon: 'SquaresFour', label: 'Dashboard' },
     { key: 'feedbacks', icon: 'Rows', label: 'Feedbacks' },
-    { key: 'exports', icon: 'DownloadSimple', label: 'Exports' },
   ],
   [USER_ROLES.BARANGAY_ADMIN]: [
     { key: 'dashboard', icon: 'SquaresFour', label: 'Dashboard' },
     { key: 'feedbacks', icon: 'Rows', label: 'Feedbacks' },
-    { key: 'exports', icon: 'DownloadSimple', label: 'Exports' },
   ],
   [USER_ROLES.SUPER_ADMIN]: [
     { key: 'dashboard', icon: 'SquaresFour', label: 'Dashboard' },
     { key: 'feedbacks', icon: 'Rows', label: 'Feedbacks' },
     { key: 'reports', icon: 'WarningCircle', label: 'Reports' },
     { key: 'accounts', icon: 'Users', label: 'Accounts' },
-    { key: 'exports', icon: 'DownloadSimple', label: 'Exports' },
   ],
 };
 

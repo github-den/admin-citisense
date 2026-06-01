@@ -185,9 +185,12 @@ export async function updatePostStatus(postId, status, { adminNotes = null } = {
 
   if (!rpcResult.error) return;
 
+  const patch = { status: mappedStatus };
+  if (adminNotes) patch.evidence_note = adminNotes;
+
   const fallback = await supabase
     .from('feedbacks')
-    .update({ status: mappedStatus })
+    .update(patch)
     .eq('id', postId);
 
   if (fallback.error) throw fallback.error;

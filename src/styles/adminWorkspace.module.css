@@ -1145,14 +1145,16 @@
 
 .statusModal {
   position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
-  width: min(680px, 100%);
+  width: min(1120px, calc(100vw - 48px));
+  height: min(90vh, 760px);
   max-height: min(90vh, 860px);
   padding: 0;
   background: var(--ui-surface);
   border: 1px solid var(--ui-border);
-  border-radius: 18px;
+  border-radius: 14px;
   box-shadow: 0 30px 60px rgba(15, 23, 42, 0.2);
   overflow: hidden;
   opacity: 0;
@@ -1165,9 +1167,338 @@
   transform: translateY(0) scale(1);
 }
 
+.statusConfirmOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.statusConfirmModal {
+  position: relative;
+  z-index: 11;
+  width: min(540px, calc(100vw - 32px));
+  max-height: min(88vh, 560px);
+  border: 1px solid var(--ui-border);
+  border-radius: 14px;
+  background: var(--ui-surface);
+  box-shadow: 0 26px 68px rgba(15, 23, 42, 0.22);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.statusConfirmModal :where(h3, p, span, strong, button, label, input, select, textarea, div) {
+  font-size: 14px;
+}
+
+.statusConfirmHeader {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--ui-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.statusConfirmHeader .feedbackModalClose {
+  position: static;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  transform: none;
+}
+
+.statusConfirmTitleBlock {
+  min-width: 0;
+  display: grid;
+}
+
+.statusConfirmHeader h3 {
+  margin: 0;
+  color: var(--ui-text);
+  font-size: 16px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.statusConfirmBody {
+  min-height: 0;
+  padding: 18px 20px 20px;
+  display: grid;
+  gap: 16px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.statusConfirmBody::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.statusConfirmField {
+  display: grid;
+  gap: 8px;
+  color: var(--ui-text);
+}
+
+.statusConfirmLabelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.statusConfirmField strong {
+  color: var(--ui-text);
+  font-size: 13px !important;
+  font-weight: 760;
+  line-height: 1.3;
+}
+
+.statusConfirmLabelRow span {
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: 999px;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-muted);
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px !important;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.statusConfirmSelectWrap {
+  position: relative;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.statusConfirmSelectWrap:hover {
+  border-color: rgba(148, 163, 184, 0.95);
+  background: color-mix(in srgb, var(--ui-surface-subtle) 34%, var(--ui-surface));
+}
+
+.statusConfirmSelectWrap:focus-within {
+  border-color: rgba(59, 130, 246, 0.44);
+  background: var(--ui-surface);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.statusConfirmSelectWrap select {
+  appearance: none;
+  width: 100%;
+  min-height: 42px;
+  padding: 0 38px 0 14px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--ui-text);
+  font-size: 13px !important;
+  font-weight: 720;
+  cursor: pointer;
+}
+
+.statusConfirmSelectWrap select:focus {
+  outline: none;
+}
+
+.statusConfirmSelectWrap svg {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  color: var(--ui-text-muted);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.statusConfirmSelectWrap select:disabled {
+  cursor: default;
+}
+
+.statusConfirmSelectWrap select:disabled + svg {
+  opacity: 0.62;
+}
+
+.statusConfirmTextarea {
+  width: 100%;
+  height: calc((14px * 1.45 * 5) + 24px);
+  min-height: calc((14px * 1.45 * 5) + 24px);
+  max-height: calc((14px * 1.45 * 5) + 24px);
+  resize: none;
+  padding: 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--ui-surface-subtle) 52%, var(--ui-surface));
+  color: var(--ui-text);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.45;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.statusConfirmTextarea:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.44);
+  background: var(--ui-surface);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.statusConfirmTextarea::placeholder {
+  color: var(--ui-text-muted);
+}
+
+.statusConfirmCharCount {
+  justify-self: end;
+  color: var(--ui-text-muted);
+  font-size: 11px !important;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.statusConfirmAttach {
+  width: 132px;
+  aspect-ratio: 1 / 1;
+  padding: 12px;
+  border: 1px dashed var(--ui-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 750;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.statusConfirmAttach:hover:not(:disabled) {
+  border-color: rgba(59, 130, 246, 0.34);
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--ui-accent);
+}
+
+.statusConfirmEvidencePreview {
+  position: relative;
+  width: 132px;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-subtle);
+}
+
+.statusConfirmEvidencePreview img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.statusConfirmEvidencePreview button {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: var(--radius-md);
+  background: rgba(248, 250, 252, 0.94);
+  color: var(--ui-text);
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.statusConfirmError {
+  color: var(--ui-destructive) !important;
+  font-size: 12px !important;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.statusConfirmFooter {
+  padding: 14px 20px;
+  border-top: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.statusConfirmSecondary,
+.statusConfirmPrimary {
+  min-width: 88px;
+  min-height: 38px;
+  padding: 0 16px;
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 760;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.statusConfirmSecondary {
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  color: var(--ui-text);
+}
+
+.statusConfirmSecondary:hover:not(:disabled) {
+  background: var(--ui-surface-hover);
+}
+
+.statusConfirmPrimary {
+  border: 1px solid var(--ui-accent);
+  background: var(--ui-accent);
+  color: rgb(255, 255, 255);
+}
+
+.statusConfirmPrimary:hover:not(:disabled) {
+  border-color: var(--ui-accent-strong);
+  background: var(--ui-accent-strong);
+}
+
+.statusConfirmDanger {
+  border-color: rgb(220, 38, 38);
+  background: rgb(220, 38, 38);
+  color: rgb(255, 255, 255);
+}
+
+.statusConfirmDanger:hover:not(:disabled) {
+  border-color: rgb(185, 28, 28);
+  background: rgb(185, 28, 28);
+}
+
+.statusConfirmSecondary:disabled,
+.statusConfirmPrimary:disabled,
+.statusConfirmAttach:disabled,
+.statusConfirmEvidencePreview button:disabled,
+.statusConfirmSelectWrap select:disabled {
+  opacity: 0.62;
+  cursor: default;
+}
+
 .statusModalHeader {
   min-height: 76px;
-  padding: 16px 56px 16px 20px;
+  padding: 16px 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1193,48 +1524,102 @@
   line-height: 1.25;
 }
 
-.statusModalBody {
-  min-height: 0;
-  padding: 18px 20px 20px;
-  overflow: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  display: grid;
-  gap: 16px;
-  background: var(--ui-bg);
+.statusModal :where(h1, h2, h3, h4, h5, h6, p, span, strong, button, label, input, textarea, select, div) {
+  font-size: 14px !important;
 }
 
-.statusModalBody::-webkit-scrollbar {
+.statusModalTitle {
+  font-size: 16px !important;
+}
+
+.statusPanelHeader span {
+  font-size: 12px !important;
+}
+
+.statusModalBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 18px 20px 20px;
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(360px, 1.1fr);
+  gap: 0;
+  background: var(--ui-bg);
+  overflow: hidden;
+}
+
+.statusTimelinePanel,
+.statusUpdatePanel,
+.statusReportsPanel {
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  display: grid;
+  align-content: start;
+  gap: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.statusTimelinePanel::-webkit-scrollbar,
+.statusUpdatePanel::-webkit-scrollbar,
+.statusReportsPanel::-webkit-scrollbar,
+.statusNotice::-webkit-scrollbar {
   display: none;
   width: 0;
   height: 0;
 }
 
-.statusTimelinePanel,
-.statusUpdatePanel {
-  border: 1px solid var(--ui-border);
-  border-radius: var(--radius-md);
-  background: var(--ui-surface);
-  display: grid;
-  gap: 16px;
-}
-
 .statusTimelinePanel {
-  padding: 16px;
+  padding: 0 16px 0 0;
 }
 
 .statusUpdatePanel {
   padding: 16px;
+}
+
+.statusReportsPanel {
+  padding: 0 0 0 16px;
+  border-left: 1px solid rgba(203, 213, 225, 0.72);
+  height: 100%;
+  align-content: stretch;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.statusReportsPanel .dismissReportsBox {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.statusReportsPanel .dismissReportsList {
+  height: 100%;
+  max-height: none;
+  min-height: 0;
+  padding-top: 16px;
+}
+
+.statusReportsPanel .dismissReportsEmpty {
+  height: 100%;
 }
 
 .statusPanelHeader {
-  display: grid;
-  gap: 4px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.72);
+  display: flex;
+  align-items: center;
+  min-height: 45px;
 }
 
 .statusPanelHeader strong {
   color: var(--ui-text);
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 850;
 }
 
@@ -1245,6 +1630,7 @@
 }
 
 .statusTimelineList {
+  padding-top: 16px;
   display: grid;
   gap: 0;
 }
@@ -1253,8 +1639,9 @@
   position: relative;
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
   gap: 12px;
-  padding-bottom: 16px;
+  padding-bottom: 24px;
 }
 
 .statusTimelineItem:not(:last-child)::before {
@@ -1274,7 +1661,7 @@
 .statusTimelineDot {
   width: 15px;
   height: 15px;
-  margin-top: 2px;
+  margin-top: 9px;
   border-radius: 999px;
   border: 2px solid var(--ui-border-strong);
   background: var(--ui-surface);
@@ -1303,18 +1690,118 @@
 }
 
 .statusTimelineItem strong {
-  display: block;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
   color: var(--ui-text);
-  font-size: 13px;
-  font-weight: 850;
+  font-size: 12px !important;
+  font-weight: 700;
 }
 
-.statusTimelineItem span {
-  display: block;
-  margin-top: 3px;
+.statusTimelineItem strong span {
+  font-size: 12px !important;
+  font-weight: 700;
+}
+
+.statusTimelineDivider {
+  color: var(--ui-text);
+}
+
+.statusTimelineResponse_onTime {
+  color: rgb(37, 99, 235) !important;
+}
+
+.statusTimelineResponse_overdue {
+  color: rgb(220, 38, 38) !important;
+}
+
+.statusTimelineResponse_late {
+  color: rgb(217, 119, 6) !important;
+}
+
+.statusTimelineContent {
+  min-width: 0;
+}
+
+.statusTimelineTopline {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.statusTimelineActions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.statusTimelineAction {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface);
+  color: var(--ui-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px !important;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.statusTimelineAction:hover:not(:disabled) {
+  border-color: rgba(59, 130, 246, 0.34);
+  background: var(--ui-accent);
+  color: rgb(255, 255, 255);
+}
+
+.statusTimelineAction:focus-visible {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.44);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.statusTimelineAction:disabled {
+  opacity: 0.62;
+  cursor: default;
+}
+
+.statusTimelineActionDanger {
+  border-color: rgba(239, 68, 68, 0.34);
+  background: var(--ui-surface);
+  color: rgb(220, 38, 38) !important;
+}
+
+.statusTimelineActionDanger:hover:not(:disabled) {
+  border-color: rgb(220, 38, 38);
+  background: rgb(220, 38, 38);
+  color: rgb(255, 255, 255) !important;
+}
+
+.statusTimelineMeta {
+  margin-left: auto;
   color: var(--ui-text-muted);
-  font-size: 12px;
-  font-weight: 750;
+  font-size: 12px !important;
+  font-weight: 650;
+  line-height: 1.35;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.statusTimelineAssignee {
+  margin-top: 2px;
+  color: var(--ui-text-muted);
+  font-size: 12px !important;
+  font-weight: 650;
+  line-height: 1.35;
 }
 
 .statusTimelineItem p {
@@ -1455,7 +1942,12 @@
 .statusNotice {
   padding: 16px;
   display: grid;
+  align-content: start;
   gap: 5px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .statusNotice strong {
@@ -1588,18 +2080,19 @@
 }
 
 .dismissReportsBox {
-  border: 1px solid var(--ui-border);
-  border-radius: var(--radius-md);
-  background: var(--ui-surface);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   overflow: hidden;
 }
 
 .dismissReportsHeader {
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--ui-border);
+  min-height: 45px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.72);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
 }
 
@@ -1609,10 +2102,30 @@
   font-weight: 850;
 }
 
+.dismissReportsTitle {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.dismissReportsTitle,
+.dismissReportsTitle span {
+  color: var(--ui-text);
+  font-size: 14px !important;
+  font-weight: 850;
+}
+
 .dismissReportsHeader span {
   color: var(--ui-text-muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.dismissReportsHeader .dismissReportsTitle,
+.dismissReportsHeader .dismissReportsTitle span {
+  color: var(--ui-text);
+  font-size: 14px !important;
+  font-weight: 850;
 }
 
 .dismissReportsList {
@@ -1629,48 +2142,62 @@
 }
 
 .dismissReportItem {
-  min-height: 65px;
-  padding: 12px 16px;
+  min-height: 34px;
+  padding: 0 0 16px;
   border-bottom: 1px solid var(--ui-border);
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 10px;
-  align-items: flex-start;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
 }
 
 .dismissReportItem:last-child {
   border-bottom: 0;
+  padding-bottom: 0;
 }
 
 .dismissReportItem svg {
-  margin-top: 2px;
-  color: var(--ui-destructive);
+  color: rgb(220, 38, 38);
 }
 
 .dismissReportItem strong {
   display: block;
   color: var(--ui-text);
-  font-size: 13px;
+  font-size: 12px !important;
   line-height: 1.35;
-  font-weight: 800;
+  font-weight: 700;
 }
 
-.dismissReportItem span {
-  display: block;
-  margin-top: 3px;
+.dismissReportCount {
+  min-width: 22px;
   color: var(--ui-text-muted);
-  font-size: 12px;
-  line-height: 1.35;
-  font-weight: 650;
+  font-size: 12px !important;
+  line-height: 1;
+  font-weight: 700;
+  text-align: right;
 }
 
 .dismissReportsEmpty {
-  min-height: 65px;
+  min-height: 100%;
   padding: 0 16px;
   color: var(--ui-text-muted);
   display: flex;
+  flex-direction: column;
   align-items: center;
+  justify-content: center;
+  gap: 10px;
   font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.dismissReportsEmpty svg {
+  color: rgb(22, 163, 74);
+}
+
+.dismissReportsEmpty span {
+  color: var(--ui-text-muted);
+  font-size: 12px !important;
   font-weight: 700;
 }
 
@@ -3121,12 +3648,60 @@
   }
 
   .statusModalSummary,
+  .statusModalBody,
   .statusChoiceGrid {
     grid-template-columns: 1fr;
   }
 
+  .statusModalBody {
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .statusModalBody::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  .statusTimelinePanel,
+  .statusUpdatePanel,
+  .statusReportsPanel,
+  .statusNotice {
+    overflow: visible;
+  }
+
+  .statusTimelinePanel {
+    padding-right: 0;
+  }
+
+  .statusReportsPanel {
+    padding-left: 0;
+    border-left: 0;
+  }
+
   .statusChoiceButton {
     min-height: 92px;
+  }
+
+  .statusConfirmOverlay {
+    align-items: flex-end;
+    padding: 14px;
+  }
+
+  .statusConfirmModal {
+    width: 100%;
+    max-height: min(76vh, 560px);
+  }
+
+  .statusConfirmFooter {
+    justify-content: stretch;
+  }
+
+  .statusConfirmSecondary,
+  .statusConfirmPrimary {
+    flex: 1 1 0;
   }
 
 }
@@ -3515,3 +4090,145 @@
     justify-content: stretch;
   }
 }
+
+/* Custom Dropdown Styling */
+.customDropdownRoot {
+  position: relative;
+  width: 100%;
+}
+
+.customDropdownTrigger {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ui-text);
+  font-size: 13px !important;
+  font-weight: 720;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.customDropdownTrigger:hover:not(:disabled) {
+  border-color: rgba(148, 163, 184, 0.95);
+  background: color-mix(in srgb, var(--ui-surface-subtle) 34%, var(--ui-surface));
+}
+
+.customDropdownRoot.customDropdownOpen .customDropdownTrigger,
+.customDropdownTrigger:focus-visible {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.44);
+  background: var(--ui-surface);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.customDropdownPlaceholder {
+  color: var(--ui-text-muted);
+  font-weight: 600;
+}
+
+.customDropdownValue {
+  color: var(--ui-text);
+}
+
+.customDropdownCaret {
+  color: var(--ui-text-muted);
+  flex-shrink: 0;
+}
+
+.customDropdownMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 100;
+  width: 100%;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  max-height: 156px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.customDropdownMenu::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.customDropdownOption {
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--ui-text);
+  font-size: 13px !important;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.customDropdownOption:hover {
+  background: var(--ui-surface-hover);
+  color: var(--ui-text);
+}
+
+.customDropdownOptionActive {
+  background: rgba(59, 130, 246, 0.08);
+  color: var(--ui-accent);
+  font-weight: 750;
+}
+
+.customDropdownDisabled {
+  opacity: 0.62;
+}
+
+.customDropdownDisabled .customDropdownTrigger {
+  cursor: default;
+}
+
+/* Timeline Layout Styling */
+.statusTimelineAssigneeSection {
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.statusTimelineActionsBelow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.statusTimelineTopline {
+  min-height: 24px !important;
+}
+
+/* Override modal overflow to prevent dropdown cropping */
+.statusConfirmModal {
+  overflow: visible !important;
+}
+
+.statusConfirmBody {
+  overflow: visible !important;
+  overflow-y: visible !important;
+}
+
+

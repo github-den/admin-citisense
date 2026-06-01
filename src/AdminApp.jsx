@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import AdminLayout from './components/AdminLayout/AdminLayout.jsx';
-import DashboardPage from './screens/DashboardPage/DashboardPage.jsx';
-import FeedbacksPage from './screens/FeedbacksPage/FeedbacksPage.jsx';
-import AccountManagementPage from './screens/AccountManagementPage/AccountManagementPage.jsx';
-import ReportsPage from './screens/ReportsPage/ReportsPage.jsx';
+import DashboardPage from './pages/DashboardPage/DashboardPage.jsx';
+import FeedbacksPage from './pages/FeedbacksPage/FeedbacksPage.jsx';
+import AccountManagementPage from './pages/AccountManagementPage/AccountManagementPage.jsx';
+import ReportsPage from './pages/ReportsPage/ReportsPage.jsx';
 import { useAdminWorkspace } from './core/hooks/useAdminWorkspace.js';
 import { useAdminStats } from './core/hooks/useAdminStats.js';
 import { deriveVerificationStatus, scopePostsToWorkspace } from './core/lib/adminWorkspace.js';

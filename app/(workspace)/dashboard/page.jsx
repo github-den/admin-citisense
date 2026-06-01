@@ -1,6 +1,6 @@
 'use client';
 
-import DashboardPage from '@/screens/DashboardPage/DashboardPage.jsx';
+import DashboardPage from '@/pages/DashboardPage/DashboardPage.jsx';
 
 export default function DashboardRoute() {
   return <DashboardPage />;

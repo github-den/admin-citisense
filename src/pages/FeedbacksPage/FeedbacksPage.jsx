@@ -9,7 +9,7 @@ import Popover from '../../components/ui/Popover.jsx';
 import SearchInput from '../../components/ui/SearchInput.jsx';
 import Tooltip from '../../components/ui/Tooltip.jsx';
 import MediaCarousel from '../../components/MediaGrid/MediaCarousel.jsx';
-import { POST_TYPES, URDANETA_BARANGAYS } from '../../constants/index.js';
+import { POST_TYPES, SERVICE_CATEGORY_OPTIONS, URDANETA_BARANGAYS, DISMISS_REASON_OPTIONS, VERIFY_REASON_OPTIONS } from '../../constants/index.js';
 import { useAuth } from '@core/context/AuthContext.jsx';
 import { useAdminWorkspace } from '@core/hooks/useAdminWorkspace.js';
 import { useAdminFeed } from '@core/hooks/useAdminFeed.js';
@@ -43,16 +43,7 @@ const TYPE_OPTIONS = [
   { value: 'suggestion', label: 'Suggestion' },
   { value: 'compliment', label: 'Compliment' },
 ];
-const DISMISS_REASON_OPTIONS = [
-  'Not about a government service',
-  'Outside service coverage area',
-  'Spam',
-  'AI generated evidence',
-  'Harassment or threatening behavior',
-  'Offensive or discriminatory content',
-  'False or misleading information',
-  'Contains personal information',
-];
+
 const TYPE_META = {
   complaint: { label: 'Complaint', Icon: Warning, toneClass: styles.typeComplaint },
   suggestion: { label: 'Suggestion', Icon: Lightbulb, toneClass: styles.typeSuggestion },
@@ -62,6 +53,7 @@ const PAGE_SIZE = 10;
 const COMPLAINT_REVIEW_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const DETAIL_CLOSE_ANIMATION_MS = 200;
 const MAX_ATTACHMENTS = 5;
+const ROUTING_NOTE_MAX_LENGTH = 240;
 const DEFAULT_VISIBLE_REPLIES = 5;
 
 function getDisplayFeedbackNo(value) {
@@ -80,6 +72,16 @@ function formatCompactDuration(ms) {
   return `${Math.ceil(totalDays / 7)} w`;
 }
 
+function formatCompactResponseDuration(ms) {
+  const totalHours = Math.max(1, Math.ceil(Math.abs(ms) / 36e5));
+  if (totalHours < 24) return `${totalHours}h`;
+
+  const totalDays = Math.ceil(totalHours / 24);
+  if (totalDays < 14) return `${totalDays}d`;
+
+  return `${Math.ceil(totalDays / 7)}w`;
+}
+
 function formatResponseWindow(post) {
   if (normalizeText(post.type) !== 'complaint') return 'N/A';
 
@@ -94,6 +96,38 @@ function formatResponseWindow(post) {
     : `${formatCompactDuration(remainingMs)} overdue`;
 }
 
+function formatTimelineResponseWindow(post) {
+  if (normalizeText(post?.type) !== 'complaint') return '';
+
+  const createdAt = Date.parse(post?.created_at ?? '');
+  if (!Number.isFinite(createdAt)) return '';
+
+  const deadline = createdAt + COMPLAINT_REVIEW_WINDOW_MS;
+
+  if (post.verificationStatus === 'Under Review') {
+    const remainingMs = deadline - Date.now();
+    return remainingMs >= 0
+      ? `${formatCompactResponseDuration(remainingMs)} left`
+      : `${formatCompactResponseDuration(remainingMs)} overdue`;
+  }
+
+  const reviewedAt = Date.parse(post?.closedAt ?? post?.updated_at ?? '');
+  if (!Number.isFinite(reviewedAt)) return '';
+
+  const responseDeltaMs = reviewedAt - deadline;
+  return responseDeltaMs > 0
+    ? `${formatCompactResponseDuration(responseDeltaMs)} late`
+    : 'on time';
+}
+
+function getTimelineResponseTone(value) {
+  const normalized = normalizeText(value);
+  if (normalized.includes('overdue')) return 'overdue';
+  if (normalized.includes('late')) return 'late';
+  if (normalized.includes('left') || normalized === 'on time') return 'onTime';
+  return '';
+}
+
 function formatDateTime(value) {
   const timestamp = Date.parse(value ?? '');
   if (!Number.isFinite(timestamp)) return '-';
@@ -106,6 +140,26 @@ function formatDateTime(value) {
     minute: '2-digit',
     hour12: true,
   });
+}
+
+function formatTimelineDateTime(value) {
+  const timestamp = Date.parse(value ?? '');
+  if (!Number.isFinite(timestamp)) return '-';
+
+  const date = new Date(timestamp);
+  const datePart = date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const timePart = date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+
+  return `${datePart} ${timePart}`;
 }
 
 function formatDate(value) {
@@ -205,15 +259,16 @@ function getAvatarSrc(value) {
 
 function buildStatusTimeline(post) {
   if (!post) return [];
-  const submittedAt = formatDateTime(post.created_at);
-  const updatedAt = formatDateTime(post.updated_at);
+  const submittedAt = formatTimelineDateTime(post.created_at);
+  const updatedAt = formatTimelineDateTime(post.updated_at);
   const verification = post.verificationStatus;
   const resolution = post.resolutionStatus;
+  const verificationWindow = formatTimelineResponseWindow(post);
 
   const timeline = [
     {
       key: 'submitted',
-      label: 'Submitted',
+      label: 'Posted',
       value: submittedAt,
       state: 'done',
       detail: post.service ? `Assigned category: ${post.service}` : 'Feedback entered the admin queue.',
@@ -221,6 +276,8 @@ function buildStatusTimeline(post) {
     {
       key: 'verification',
       label: verification,
+      responseWindow: verificationWindow,
+      responseTone: getTimelineResponseTone(verificationWindow),
       value: verification === 'Under Review' ? formatResponseWindow(post) : updatedAt,
       state: verification === 'Under Review' ? 'current' : verification === 'Dismissed' ? 'blocked' : 'done',
       detail: getVerificationDescription(verification),
@@ -350,14 +407,20 @@ function getResolutionDescription(value) {
 
 function getDismissReportItems(post) {
   const reasons = Array.isArray(post?.reportReasons) ? post.reportReasons : [];
-  const handles = Array.isArray(post?.reportHandles) ? post.reportHandles : [];
   const count = Number(post?.reportCount ?? 0);
 
   if (reasons.length > 0) {
-    return reasons.map((reason, index) => ({
+    const byReason = new Map();
+    reasons.forEach((reason) => {
+      const label = String(reason ?? '').trim();
+      if (!label) return;
+      byReason.set(label, (byReason.get(label) ?? 0) + 1);
+    });
+
+    return Array.from(byReason.entries()).map(([reason, reasonCount], index) => ({
       id: `report-${index}-${reason}`,
       title: reason,
-      meta: handles[index] ? `Reported by ${handles[index]}` : 'Citizen report',
+      count: reasonCount,
     }));
   }
 
@@ -365,7 +428,7 @@ function getDismissReportItems(post) {
     return Array.from({ length: count }, (_, index) => ({
       id: `report-${index}`,
       title: 'Report submitted',
-      meta: handles[index] ? `Reported by ${handles[index]}` : 'Citizen report',
+      count: 1,
     }));
   }
 
@@ -822,168 +885,202 @@ function DiscussionComposer({ postId, onSent }) {
   );
 }
 
-function StatusUpdateModal({ post, visible, onClose, onStatusPatch }) {
-  const [evidenceFile, setEvidenceFile] = useState(null);
-  const [evidencePreview, setEvidencePreview] = useState('');
-  const [savingStatus, setSavingStatus] = useState('');
-  const [evidenceError, setEvidenceError] = useState('');
-  const [statusIntent, setStatusIntent] = useState('');
-  const [dismissReasons, setDismissReasons] = useState([]);
-  const [dismissError, setDismissError] = useState('');
-  const evidenceInputRef = useRef(null);
-  const { session } = useAuth() ?? {};
-
-  useEffect(() => () => {
-    if (evidencePreview) URL.revokeObjectURL(evidencePreview);
-  }, [evidencePreview]);
+function CustomDropdown({ value, onChange, options, placeholder, disabled, ariaLabel }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
 
   useEffect(() => {
-    setStatusIntent('');
-    setDismissReasons([]);
-    setDismissError('');
-    setEvidenceError('');
-    clearEvidence();
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div 
+      ref={dropdownRef} 
+      className={[
+        styles.customDropdownRoot,
+        disabled ? styles.customDropdownDisabled : '',
+        isOpen ? styles.customDropdownOpen : ''
+      ].filter(Boolean).join(' ')}
+    >
+      <button
+        type="button"
+        className={styles.customDropdownTrigger}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        aria-expanded={isOpen}
+      >
+        <span className={value ? styles.customDropdownValue : styles.customDropdownPlaceholder}>
+          {value || placeholder}
+        </span>
+        <CaretDown 
+          size={16} 
+          weight="bold" 
+          className={styles.customDropdownCaret} 
+          style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
+        />
+      </button>
+
+      {isOpen && (
+        <ul className={styles.customDropdownMenu} role="listbox">
+          <li
+            className={[styles.customDropdownOption, !value ? styles.customDropdownOptionActive : ''].filter(Boolean).join(' ')}
+            onClick={() => {
+              onChange('');
+              setIsOpen(false);
+            }}
+            role="option"
+            aria-selected={!value}
+          >
+            {placeholder}
+          </li>
+          {options.map((option) => (
+            <li
+              key={option}
+              className={[styles.customDropdownOption, value === option ? styles.customDropdownOptionActive : ''].filter(Boolean).join(' ')}
+              onClick={() => {
+                onChange(option);
+                setIsOpen(false);
+              }}
+              role="option"
+              aria-selected={value === option}
+            >
+              {option}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function StatusUpdateModal({
+  post,
+  visible,
+  workspace,
+  officeOptions = [],
+  barangayOptions = [],
+  onClose,
+  onStatusPatch,
+  onAdminAction,
+}) {
+  const [savingStatus, setSavingStatus] = useState('');
+  const [confirmMode, setConfirmMode] = useState('');
+  const [verifyReason, setVerifyReason] = useState('');
+  const [verifyError, setVerifyError] = useState('');
+  const [dismissReason, setDismissReason] = useState('');
+  const [dismissError, setDismissError] = useState('');
+  const [routeDestination, setRouteDestination] = useState('');
+  const [routeNote, setRouteNote] = useState('');
+  const [routeError, setRouteError] = useState('');
+
+  useEffect(() => {
+    setSavingStatus('');
+    closeConfirm();
   }, [post?.id, visible]);
 
   if (!post) return null;
 
   const canUpdate = isComplaintFeedback(post);
-  const resolutionOptions = RESOLUTION_OPTIONS.filter((value) => !['All', 'Not Started'].includes(value));
-  const isVerified = post.verificationStatus === 'Verified';
   const isUnderReview = post.verificationStatus === 'Under Review';
   const timeline = buildStatusTimeline(post);
   const dismissReportItems = getDismissReportItems(post);
-  const selectedResolution = isVerified && resolutionOptions.includes(statusIntent) ? statusIntent : '';
-  const submitLabel = statusIntent || 'Select status';
-  const evidenceRequired = isVerified && Boolean(selectedResolution);
-  const verifyEvidenceOptional = isUnderReview && statusIntent === 'Verified';
-  const dismissSelected = isUnderReview && statusIntent === 'Dismissed';
 
-  function chooseEvidence(file) {
-    setEvidenceError('');
-    if (!file) return;
-    if (!file.type?.startsWith('image/')) {
-      setEvidenceError('Attach an image file as evidence.');
-      return;
-    }
-    if (evidencePreview) URL.revokeObjectURL(evidencePreview);
-    setEvidenceFile(file);
-    setEvidencePreview(URL.createObjectURL(file));
-  }
-
-  function clearEvidence() {
-    if (evidencePreview) URL.revokeObjectURL(evidencePreview);
-    setEvidenceFile(null);
-    setEvidencePreview('');
-    setEvidenceError('');
-    if (evidenceInputRef.current) evidenceInputRef.current.value = '';
-  }
-
-  function selectIntent(nextIntent) {
-    setStatusIntent(nextIntent);
+  function closeConfirm() {
+    setConfirmMode('');
+    setVerifyReason('');
+    setVerifyError('');
+    setDismissReason('');
     setDismissError('');
-    setEvidenceError('');
-    if (nextIntent === 'Dismissed') clearEvidence();
-    if (nextIntent !== 'Dismissed') setDismissReasons([]);
+    setRouteDestination('');
+    setRouteNote('');
+    setRouteError('');
   }
 
-  function toggleDismissReason(reason) {
+  function openConfirm(mode) {
+    if (savingStatus) return;
+    setVerifyError('');
     setDismissError('');
-    setDismissReasons((current) => (
-      current.includes(reason)
-        ? current.filter((item) => item !== reason)
-        : [...current, reason]
-    ));
+    setRouteError('');
+    setConfirmMode(mode);
   }
 
   async function submitStatus(nextVerification, nextResolution, options = {}) {
-    const { requireEvidence = false, adminNotes = null } = options;
-    if (requireEvidence && !evidenceFile) {
-      setEvidenceError('Attach photo evidence before submitting this status.');
+    const { adminNotes = null } = options;
+    const statusKey = `${nextVerification}-${nextResolution}`;
+    setSavingStatus(statusKey);
+
+    try {
+      const updated = await onStatusPatch(post, nextVerification, nextResolution, { adminNotes });
+      if (updated !== false) closeConfirm();
+    } finally {
+      setSavingStatus('');
+    }
+  }
+
+  async function submitVerify() {
+    const nextResolution = post.resolutionStatus === 'Not Started' ? 'In Progress' : post.resolutionStatus;
+    if (!verifyReason) {
+      setVerifyError('Select a verification reason.');
       return;
     }
 
-    const statusKey = `${nextVerification}-${nextResolution}`;
-    setSavingStatus(statusKey);
-    setEvidenceError('');
-
-    let evidenceUrl = '';
-    if (evidenceFile) {
-      const { data, error } = await uploadMediaFiles([evidenceFile], {
-        ownerId: session?.user?.id ?? 'admin-status',
-        folder: 'status-evidence',
-      });
-      if (error) {
-        setEvidenceError(error.message ?? 'Unable to upload evidence.');
-        setSavingStatus('');
-        return;
-      }
-      evidenceUrl = data?.[0] ?? '';
-    }
-
-    const notes = [
-      adminNotes,
-      evidenceUrl ? `Status evidence: ${evidenceUrl}` : null,
-    ].filter(Boolean).join('\n') || null;
-
-    await onStatusPatch(post, nextVerification, nextResolution, { adminNotes: notes });
-    clearEvidence();
-    setStatusIntent('');
-    setDismissReasons([]);
-    setDismissError('');
-    setSavingStatus('');
-  }
-
-  function submitVerify() {
-    const nextResolution = post.resolutionStatus === 'Not Started' ? 'In Progress' : post.resolutionStatus;
-    submitStatus('Verified', nextResolution);
+    setVerifyError('');
+    await submitStatus('Verified', nextResolution, { adminNotes: `Verify reason: ${verifyReason}` });
   }
 
   function submitDismiss() {
-    if (dismissReasons.length === 0) {
-      setDismissError('Select at least one dismissal reason.');
+    if (!dismissReason) {
+      setDismissError('Select a dismissal reason.');
       return;
     }
 
     submitStatus('Dismissed', post.resolutionStatus, {
-      adminNotes: `Dismiss reason: ${dismissReasons.join(', ')}`,
+      adminNotes: `Dismiss reason: ${dismissReason}`,
     });
   }
 
-  function submitResolution() {
-    if (!selectedResolution) return;
-    submitStatus('Verified', selectedResolution, { requireEvidence: true });
+  async function submitAdminAction() {
+    const destination = routeDestination.trim();
+    const note = routeNote.trim().slice(0, ROUTING_NOTE_MAX_LENGTH);
+
+    if (!destination || !note) {
+      setRouteError('Select a destination and add a note.');
+      return;
+    }
+
+    const statusKey = `${confirmMode}-${destination}`;
+    setSavingStatus(statusKey);
+    setRouteError('');
+
+    try {
+      const updated = await onAdminAction?.(post, confirmMode, { destination, note });
+      if (updated !== false) closeConfirm();
+    } finally {
+      setSavingStatus('');
+    }
   }
 
-  function renderEvidenceBox({ optional = false, required = false } = {}) {
-    return (
-      <div className={styles.evidenceBox}>
-        <div>
-          <strong>Photo evidence {required ? <span className={styles.requiredMark}>Required</span> : null}</strong>
-          <span>{optional ? 'Optional image for audit notes.' : 'Attach an image before submitting this status.'}</span>
-        </div>
-        {evidencePreview ? (
-          <div className={styles.evidencePreview}>
-            <img src={evidencePreview} alt="" />
-            <button type="button" onClick={clearEvidence}>Remove</button>
-          </div>
-        ) : (
-          <button type="button" className={styles.evidenceAttachButton} onClick={() => evidenceInputRef.current?.click()}>
-            <Paperclip size={16} weight="bold" />
-            Attach photo
-          </button>
-        )}
-        <input
-          ref={evidenceInputRef}
-          className={styles.fileInput}
-          type="file"
-          accept="image/*"
-          onChange={(event) => chooseEvidence(event.target.files?.[0])}
-        />
-        {evidenceError ? <span className={styles.evidenceError}>{evidenceError}</span> : null}
-      </div>
-    );
-  }
+  const isVerifyConfirm = confirmMode === 'verify';
+  const isDismissConfirm = confirmMode === 'dismiss';
+  const isTransferConfirm = confirmMode === 'transfer';
+  const isDelegateConfirm = confirmMode === 'delegate';
+  const isRoutingConfirm = isTransferConfirm || isDelegateConfirm;
+  const confirmTitle = isVerifyConfirm
+    ? 'Verify feedback'
+    : isDismissConfirm
+      ? 'Dismiss feedback'
+      : isTransferConfirm
+        ? 'Transfer feedback'
+        : 'Delegate feedback';
+  const currentAdminInCharge = post.office || post.service || 'Unassigned office';
+  const routingOptions = isDelegateConfirm ? barangayOptions : officeOptions;
 
   return (
     <div
@@ -1010,183 +1107,234 @@ function StatusUpdateModal({ post, visible, onClose, onStatusPatch }) {
           <section className={styles.statusTimelinePanel}>
             <div className={styles.statusPanelHeader}>
               <strong>Status Timeline</strong>
-              <span>Current progress for this feedback.</span>
             </div>
             <div className={styles.statusTimelineList}>
-              {timeline.map((item) => (
-                <div key={item.key} className={styles.statusTimelineItem}>
-                  <span className={`${styles.statusTimelineDot} ${styles[`statusTimelineDot_${item.state}`]}`} aria-hidden="true" />
-                  <div>
-                    <strong>{item.label}</strong>
-                    <span>{item.value}</span>
-                    <p>{item.detail}</p>
+              {timeline.map((item) => {
+                const showVerificationActions = canUpdate && isUnderReview && item.key === 'verification' && !workspace?.isSuperAdmin;
+                const showSuperAdminActions = canUpdate && isUnderReview && item.key === 'verification' && workspace?.isSuperAdmin;
+                return (
+                  <div key={item.key} className={styles.statusTimelineItem}>
+                    <span className={`${styles.statusTimelineDot} ${styles[`statusTimelineDot_${item.state}`]}`} aria-hidden="true" />
+                    <div className={styles.statusTimelineContent}>
+                      <div className={styles.statusTimelineTopline}>
+                        <strong>
+                          <span>{item.label}</span>
+                        </strong>
+                        <span className={styles.statusTimelineMeta}>{item.value}</span>
+                      </div>
+                      {showVerificationActions ? (
+                        <div className={styles.statusTimelineAssigneeSection}>
+                          <div className={styles.statusTimelineAssignee}>
+                            In-charge: {currentAdminInCharge}
+                          </div>
+                          <div className={styles.statusTimelineActionsBelow}>
+                            <button
+                              type="button"
+                              className={styles.statusTimelineAction}
+                              onClick={() => openConfirm('verify')}
+                              disabled={Boolean(savingStatus)}
+                            >
+                              {savingStatus.startsWith('Verified-') ? 'Verifying...' : 'Verify'}
+                            </button>
+                            <button
+                              type="button"
+                              className={`${styles.statusTimelineAction} ${styles.statusTimelineActionDanger}`}
+                              onClick={() => openConfirm('dismiss')}
+                              disabled={Boolean(savingStatus)}
+                            >
+                              {savingStatus.startsWith('Dismissed-') ? 'Dismissing...' : 'Dismiss'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : showSuperAdminActions ? (
+                        <div className={styles.statusTimelineAssigneeSection}>
+                          <div className={styles.statusTimelineAssignee}>
+                            In-charge: {currentAdminInCharge}
+                          </div>
+                          <div className={styles.statusTimelineActionsBelow}>
+                            <button
+                              type="button"
+                              className={styles.statusTimelineAction}
+                              onClick={() => openConfirm('transfer')}
+                              disabled={Boolean(savingStatus)}
+                            >
+                              Transfer
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.statusTimelineAction}
+                              onClick={() => openConfirm('delegate')}
+                              disabled={Boolean(savingStatus)}
+                            >
+                              Delegate
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
 
-          {!canUpdate ? (
-            <section className={styles.statusNotice}>
-              <strong>Status updates are for complaint feedback.</strong>
-              <span>This feedback can still be reviewed in the discussion modal.</span>
-            </section>
-          ) : (
-            <section className={styles.statusUpdatePanel}>
-              <div className={styles.statusPanelHeader}>
-                <strong>Update</strong>
-                <span>{isUnderReview ? 'Choose the next verification action.' : 'Choose the next resolution status.'}</span>
+          <section className={styles.statusReportsPanel}>
+            <div className={styles.dismissReportsBox}>
+              <div className={styles.dismissReportsHeader}>
+                <strong className={styles.dismissReportsTitle}>
+                  <span>{dismissReportItems.length || 0}</span>
+                  <span>Reports</span>
+                </strong>
               </div>
-
-              {isUnderReview ? (
-                <section className={styles.statusFlowSection}>
-                  <div className={styles.statusChoiceGridCompact}>
-                    <button
-                      type="button"
-                      className={`${styles.statusChoiceButton} ${statusIntent === 'Verified' ? styles.statusChoiceButtonActive : ''}`}
-                      onClick={() => selectIntent('Verified')}
-                      disabled={Boolean(savingStatus)}
-                    >
-                      <strong>Verify</strong>
-                      <span>{getVerificationDescription('Verified')}</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`${styles.statusChoiceButton} ${statusIntent === 'Dismissed' ? styles.statusChoiceButtonActive : ''}`}
-                      onClick={() => selectIntent('Dismissed')}
-                      disabled={Boolean(savingStatus)}
-                    >
-                      <strong>Dismiss</strong>
-                      <span>{getVerificationDescription('Dismissed')}</span>
-                    </button>
+              <div className={styles.dismissReportsList}>
+                {dismissReportItems.length > 0 ? (
+                  dismissReportItems.map((report) => (
+                    <article key={report.id} className={styles.dismissReportItem}>
+                      <FlagBanner size={16} weight="duotone" aria-hidden="true" />
+                      <strong>{report.title}</strong>
+                      <span className={styles.dismissReportCount}>{report.count}</span>
+                    </article>
+                  ))
+                ) : (
+                  <div className={styles.dismissReportsEmpty}>
+                    <FlagBanner size={30} weight="duotone" aria-hidden="true" />
+                    <span>No reports for this feedback.</span>
                   </div>
-
-                  {verifyEvidenceOptional ? (
-                    <>
-                      {renderEvidenceBox({ optional: true })}
-                      <button
-                        type="button"
-                        className={styles.statusSubmitButton}
-                        onClick={submitVerify}
-                        disabled={Boolean(savingStatus)}
-                      >
-                        {savingStatus ? 'Verifying...' : 'Verify'}
-                      </button>
-                    </>
-                  ) : null}
-
-                  {dismissSelected ? (
-                    <>
-                      <div className={styles.dismissReportsBox}>
-                        <div className={styles.dismissReportsHeader}>
-                          <strong>Reports</strong>
-                          <span>{dismissReportItems.length || 0} linked to this feedback.</span>
-                        </div>
-                        <div className={styles.dismissReportsList}>
-                          {dismissReportItems.length > 0 ? (
-                            dismissReportItems.map((report) => (
-                              <article key={report.id} className={styles.dismissReportItem}>
-                                <FlagBanner size={16} weight="duotone" aria-hidden="true" />
-                                <div>
-                                  <strong>{report.title}</strong>
-                                  <span>{report.meta}</span>
-                                </div>
-                              </article>
-                            ))
-                          ) : (
-                            <div className={styles.dismissReportsEmpty}>No citizen reports are linked to this feedback.</div>
-                          )}
-                        </div>
-                      </div>
-                      <div className={styles.dismissReasonBox}>
-                        <div className={styles.dismissReasonHeader}>
-                          <strong>Dismiss reason</strong>
-                          <span>Select all that apply.</span>
-                        </div>
-                        <div className={styles.dismissReasonList} role="group" aria-label="Dismiss reasons">
-                          {DISMISS_REASON_OPTIONS.map((reason) => {
-                            const checked = dismissReasons.includes(reason);
-                            return (
-                              <label
-                                key={reason}
-                                className={`${styles.dismissReasonOption} ${checked ? styles.dismissReasonOptionActive : ''}`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => toggleDismissReason(reason)}
-                                  disabled={Boolean(savingStatus)}
-                                />
-                                <span className={styles.dismissReasonMarker} aria-hidden="true">
-                                  {checked ? <FlagBanner size={16} weight="fill" /> : null}
-                                </span>
-                                <span className={styles.dismissReasonLabel}>{reason}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                        {dismissError ? <span className={styles.evidenceError}>{dismissError}</span> : null}
-                      </div>
-                      <button
-                        type="button"
-                        className={`${styles.statusSubmitButton} ${styles.statusSubmitButtonDanger}`}
-                        onClick={submitDismiss}
-                        disabled={Boolean(savingStatus)}
-                      >
-                        {savingStatus ? 'Dismissing...' : 'Dismiss'}
-                      </button>
-                    </>
-                  ) : null}
-                </section>
-              ) : (
-                <section className={`${styles.statusFlowSection} ${!isVerified ? styles.statusFlowSectionMuted : ''}`}>
-                  <div className={styles.statusFlowHeader}>
-                    <span className={styles.statusStepNumber}>1</span>
-                    <div>
-                      <strong>Resolution</strong>
-                      <span>{isVerified ? 'Select the next status, then attach photo evidence.' : 'Resolution updates appear after verification.'}</span>
-                    </div>
-                  </div>
-                  {isVerified ? (
-                    <div className={styles.statusChoiceGrid}>
-                      {resolutionOptions.map((option) => (
-                        <button
-                          key={option}
-                          type="button"
-                          className={`${styles.statusChoiceButton} ${statusIntent === option ? styles.statusChoiceButtonActive : ''}`}
-                          onClick={() => selectIntent(option)}
-                          disabled={post.resolutionStatus === option || Boolean(savingStatus)}
-                        >
-                          <strong>{option}</strong>
-                          <span>{getResolutionDescription(option)}</span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className={styles.statusLockedRow}>
-                      This feedback cannot be updated from its current status.
-                    </div>
-                  )}
-
-                  {selectedResolution ? (
-                    <>
-                      {renderEvidenceBox({ required: true })}
-                      <button
-                        type="button"
-                        className={styles.statusSubmitButton}
-                        onClick={submitResolution}
-                        disabled={Boolean(savingStatus)}
-                      >
-                        {savingStatus ? 'Updating...' : submitLabel}
-                      </button>
-                    </>
-                  ) : null}
-                </section>
-              )}
-            </section>
-          )}
+                )}
+              </div>
+            </div>
+          </section>
         </div>
       </section>
+      {confirmMode ? (
+        <div
+          className={styles.statusConfirmOverlay}
+          onMouseDown={(event) => {
+            event.stopPropagation();
+            if (!savingStatus) closeConfirm();
+          }}
+        >
+          <section
+            className={styles.statusConfirmModal}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="status-confirm-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header className={styles.statusConfirmHeader}>
+              <div className={styles.statusConfirmTitleBlock}>
+                <h3 id="status-confirm-title">{confirmTitle}</h3>
+              </div>
+              <button
+                type="button"
+                className={styles.feedbackModalClose}
+                onClick={closeConfirm}
+                aria-label="Close confirmation"
+                disabled={Boolean(savingStatus)}
+              >
+                <X size={18} weight="bold" />
+              </button>
+            </header>
+
+            <div className={styles.statusConfirmBody}>
+              {isRoutingConfirm ? (
+                <>
+                  <label className={styles.statusConfirmField}>
+                    <CustomDropdown
+                      value={routeDestination}
+                      onChange={(val) => {
+                        setRouteDestination(val);
+                        setRouteError('');
+                      }}
+                      options={routingOptions}
+                      placeholder={isDelegateConfirm ? 'Select barangay' : 'Select LGU office'}
+                      disabled={Boolean(savingStatus)}
+                      ariaLabel={isDelegateConfirm ? 'Delegate to barangay admin' : 'Transfer to LGU office'}
+                    />
+                  </label>
+                  <label className={styles.statusConfirmField}>
+                    <textarea
+                      className={styles.statusConfirmTextarea}
+                      aria-label="Action note"
+                      placeholder="Note for this action"
+                      rows={5}
+                      maxLength={ROUTING_NOTE_MAX_LENGTH}
+                      value={routeNote}
+                      onChange={(event) => {
+                        setRouteNote(event.target.value.slice(0, ROUTING_NOTE_MAX_LENGTH));
+                        setRouteError('');
+                      }}
+                      disabled={Boolean(savingStatus)}
+                    />
+                    <span className={styles.statusConfirmCharCount}>
+                      {routeNote.length}/{ROUTING_NOTE_MAX_LENGTH}
+                    </span>
+                  </label>
+                  {routeError ? <span className={styles.statusConfirmError}>{routeError}</span> : null}
+                </>
+              ) : isVerifyConfirm ? (
+                <label className={styles.statusConfirmField}>
+                  <CustomDropdown
+                    value={verifyReason}
+                    onChange={(val) => {
+                      setVerifyReason(val);
+                      setVerifyError('');
+                    }}
+                    options={VERIFY_REASON_OPTIONS}
+                    placeholder="Select verification reason"
+                    disabled={Boolean(savingStatus)}
+                    ariaLabel="Verification reason"
+                  />
+                  {verifyError ? <span className={styles.statusConfirmError}>{verifyError}</span> : null}
+                </label>
+              ) : (
+                <label className={styles.statusConfirmField}>
+                  <CustomDropdown
+                    value={dismissReason}
+                    onChange={(val) => {
+                      setDismissReason(val);
+                      setDismissError('');
+                    }}
+                    options={DISMISS_REASON_OPTIONS}
+                    placeholder="Select dismissal reason"
+                    disabled={Boolean(savingStatus)}
+                    ariaLabel="Dismissal reason"
+                  />
+                  {dismissError ? <span className={styles.statusConfirmError}>{dismissError}</span> : null}
+                </label>
+              )}
+            </div>
+
+            <footer className={styles.statusConfirmFooter}>
+              <button
+                type="button"
+                className={styles.statusConfirmSecondary}
+                onClick={closeConfirm}
+                disabled={Boolean(savingStatus)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={[
+                  styles.statusConfirmPrimary,
+                  isDismissConfirm ? styles.statusConfirmDanger : '',
+                ].join(' ')}
+                onClick={isRoutingConfirm ? submitAdminAction : isVerifyConfirm ? submitVerify : submitDismiss}
+                disabled={Boolean(savingStatus)}
+              >
+                {isVerifyConfirm
+                  ? (savingStatus ? 'Verifying...' : 'Verify')
+                  : isDismissConfirm
+                    ? (savingStatus ? 'Dismissing...' : 'Dismiss')
+                    : isTransferConfirm
+                      ? (savingStatus ? 'Transferring...' : 'Transfer')
+                      : (savingStatus ? 'Delegating...' : 'Delegate')}
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1444,6 +1592,10 @@ export default function FeedbacksPage() {
   }, [posts, reportLookup, workspace]);
 
   const officeOptions = useMemo(() => Array.from(new Set(enrichedPosts.map((post) => post.office).filter(Boolean))).sort(), [enrichedPosts]);
+  const transferOfficeOptions = useMemo(
+    () => Array.from(new Set(SERVICE_CATEGORY_OPTIONS.map((option) => option.office).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [],
+  );
   const serviceOptions = useMemo(
     () => Array.from(new Set(enrichedPosts.map((post) => post.service).filter(Boolean))).sort((a, b) => String(a).localeCompare(String(b))),
     [enrichedPosts],
@@ -1556,7 +1708,7 @@ export default function FeedbacksPage() {
   async function handleStatusPatch(post, nextVerification, nextResolution, options = {}) {
     if (!isComplaintFeedback(post)) {
       showToast('Only complaint feedback can be updated.', 'warning');
-      return;
+      return false;
     }
 
     try {
@@ -1564,8 +1716,10 @@ export default function FeedbacksPage() {
       await changeStatus(post.id, nextStatus, options);
       showToast(`Feedback ${post.feedbackNo ?? ''} updated to ${nextStatus}.`, 'success');
       await reload();
+      return true;
     } catch (error) {
       showToast(error?.message ?? 'Unable to update the feedback status right now.', 'error');
+      return false;
     }
   }
 
@@ -1602,6 +1756,26 @@ export default function FeedbacksPage() {
         ? `Transfer queued for ${destination}.`
         : `Reassignment queued for ${destination}.`;
     showToast(message, 'info', 3000);
+  }
+
+  async function handleAdminRoutingAction(post, type, { destination, note }) {
+    if (!workspace.isSuperAdmin) {
+      showToast('Only Super Admin can transfer or delegate feedback.', 'warning');
+      return false;
+    }
+
+    const actionLabel = type === 'delegate' ? 'Delegation' : 'Transfer';
+    const adminNotes = `${actionLabel}: ${destination}\nNote: ${note}`;
+
+    try {
+      await changeStatus(post.id, post.status, { adminNotes });
+      showToast(`${actionLabel} queued for ${destination}.`, 'success');
+      await reload();
+      return true;
+    } catch (error) {
+      showToast(error?.message ?? `Unable to queue ${actionLabel.toLowerCase()} right now.`, 'error');
+      return false;
+    }
   }
 
   function openFeedbackDetail(postId) {
@@ -2103,8 +2277,12 @@ export default function FeedbacksPage() {
       <StatusUpdateModal
         post={statusPost}
         visible={Boolean(statusPost && statusModalVisible)}
+        workspace={workspace}
+        officeOptions={transferOfficeOptions}
+        barangayOptions={barangayOptions}
         onClose={closeFeedbackUpdate}
         onStatusPatch={handleStatusPatch}
+        onAdminAction={handleAdminRoutingAction}
       />
     </div>
   );

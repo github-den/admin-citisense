@@ -111,3 +111,21 @@ export const KANBAN_COLS = [
   { id: 'dismissed',   label: 'Dismissed',    color: '#DC2626' },
   { id: 'closed',      label: 'Closed',       color: '#475569' },
 ];
+
+export const DISMISS_REASON_OPTIONS = [
+  'Not government service',
+  'Outside service coverage area',
+  'Spam',
+  'AI-generated evidence',
+  'Harassment or threats',
+  'Offensive content',
+  'False information',
+  'Personal information',
+];
+
+export const VERIFY_REASON_OPTIONS = [
+  'Valid concern',
+  'Specific location',
+  'Credible details',
+  'Known service issue',
+];
