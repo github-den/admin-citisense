@@ -280,58 +280,24 @@ export async function getAdminPosts({ status, type, page = 0, limit } = {}) {
 }
 
 export async function updatePostStatus(postId, status, { adminNotes = null } = {}) {
-  if (!supabase) return;
+  // Use the server-side API route which uses the service role key to bypass
+  // Supabase RLS policies that silently block admin status updates from the browser client.
+  const session = await supabase?.auth?.getSession();
+  const accessToken = session?.data?.session?.access_token ?? null;
 
-  const patch = {};
-  if (status === 'Under Review') {
-    patch.status = null;
-    patch.is_verified_post = false;
-    patch.dismissed = false;
-    patch.dismissed_by = null;
-    patch.dismissed_at = null;
-    patch.dismissed_reason = null;
-  } else if (status === 'Verified') {
-    patch.status = null;
-    patch.is_verified_post = true;
-    patch.dismissed = false;
-    patch.dismissed_by = null;
-    patch.dismissed_at = null;
-    patch.dismissed_reason = null;
-  } else if (status === 'In Progress') {
-    patch.status = 'in-progress';
-    patch.is_verified_post = true;
-    patch.dismissed = false;
-    patch.dismissed_by = null;
-    patch.dismissed_at = null;
-    patch.dismissed_reason = null;
-  } else if (status === 'On Hold' || status === 'On hold') {
-    patch.status = 'on-hold';
-    patch.is_verified_post = true;
-    patch.dismissed = false;
-    patch.dismissed_by = null;
-    patch.dismissed_at = null;
-    patch.dismissed_reason = null;
-  } else if (status === 'Resolved') {
-    patch.status = 'resolved';
-    patch.is_verified_post = true;
-    patch.dismissed = false;
-    patch.dismissed_by = null;
-    patch.dismissed_at = null;
-    patch.dismissed_reason = null;
-  } else if (status === 'Dismissed') {
-    patch.status = null;
-    patch.is_verified_post = false;
-    patch.dismissed = true;
-    patch.dismissed_at = new Date().toISOString();
-    patch.dismissed_reason = adminNotes || 'No reason provided';
+  const response = await fetch('/api/feedbacks/update-status', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
+    body: JSON.stringify({ postId, status, adminNotes }),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error ?? `Status update failed (HTTP ${response.status}).`);
   }
-
-  const { error } = await supabase
-    .from('feedbacks')
-    .update(patch)
-    .eq('id', postId);
-
-  if (error) throw error;
 }
 
 export async function deletePost(postId) {
