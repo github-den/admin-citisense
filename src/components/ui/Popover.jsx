@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 import styles from './Popover.module.css';
 
@@ -35,6 +35,17 @@ export default function Popover({
     if (!hoverable) return;
     closeTimeout.current = setTimeout(() => setOpen(false), 300);
   };
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const handleScroll = () => setOpen(false);
+    window.addEventListener('scroll', handleScroll, true);
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [isOpen]);
 
   return (
     <PopoverRoot open={isOpen} onOpenChange={setOpen}>

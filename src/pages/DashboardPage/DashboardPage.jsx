@@ -12,6 +12,7 @@ import {
 } from '@phosphor-icons/react';
 import Button from '../../components/ui/Button.jsx';
 import Menu from '../../components/ui/Menu.jsx';
+import Popover from '../../components/ui/Popover.jsx';
 import DashboardDateRangeFilter from './DashboardDateRangeFilter.jsx';
 import { SERVICE_CATEGORIES, URDANETA_BARANGAYS } from '../../constants/index.js';
 import { useAdminStats } from '@core/hooks/useAdminStats.js';
@@ -902,7 +903,7 @@ function DashboardDonutChart({ data, activeIndex, onSliceEnter, onSliceLeave }) 
               cy="50%"
               innerRadius={70}
               outerRadius={96}
-              paddingAngle={2}
+              paddingAngle={0}
               activeIndex={activeIndex ?? undefined}
               onMouseEnter={(_, index) => onSliceEnter(index)}
               onMouseLeave={onSliceLeave}
@@ -1024,6 +1025,8 @@ export default function DashboardPage() {
     compliment: true,
   });
   const [activeExplanationKey, setActiveExplanationKey] = useState(null);
+  const [explanationLoadingMap, setExplanationLoadingMap] = useState({});
+  const [explanationText, setExplanationText] = useState({});
   const [activeDonutSlice, setActiveDonutSlice] = useState({
     feedbacks: null,
     complaints: null,
@@ -1283,8 +1286,143 @@ export default function DashboardPage() {
     ];
   }
 
-  function toggleExplanation(chartKey) {
-    setActiveExplanationKey((current) => (current === chartKey ? null : chartKey));
+  function normalizeActionableInsight(text) {
+    const compact = String(text ?? '')
+      .replace(/\s+/g, ' ')
+      .replace(/^\s*\{[^{}]{0,240}\}\s*/u, '')
+      .replace(/^\s*\[[A-Za-z]\]\s*/u, '')
+      .replace(/^\s*[✨\u2728\*\-•]+\s*/u, '')
+      .replace(/^\s*ACTIONABLE\s+INSIGHTS\s*:\s*/iu, '')
+      .trim();
+
+    if (!compact) {
+      return 'No clear signal yet. Check this chart again after more data is collected.';
+    }
+
+    const firstSentence = compact.split(/(?<=[.!?])\s+/)[0] ?? compact;
+    return firstSentence.slice(0, 220).trim();
+  }
+
+  function extractTextFromAiResponse(payload) {
+    const textParts = [];
+
+    function collect(node) {
+      if (!node) return;
+
+      if (typeof node === 'string') {
+        const value = node.trim();
+        if (value) textParts.push(value);
+        return;
+      }
+
+      if (Array.isArray(node)) {
+        node.forEach(collect);
+        return;
+      }
+
+      if (typeof node !== 'object') return;
+
+      if (typeof node.output_text === 'string' && node.output_text.trim()) {
+        textParts.push(node.output_text.trim());
+      }
+
+      if (typeof node.text === 'string' && node.text.trim()) {
+        textParts.push(node.text.trim());
+      }
+
+      if (typeof node.content === 'string' && node.content.trim()) {
+        textParts.push(node.content.trim());
+      }
+
+      // Groq/OpenAI Responses API often returns content chunks like:
+      // { type: 'message', content: [{ type: 'output_text', text: '...' }] }
+      if (Array.isArray(node.content)) {
+        node.content.forEach((chunk) => {
+          if (chunk && typeof chunk === 'object') {
+            if (typeof chunk.text === 'string' && chunk.text.trim()) {
+              textParts.push(chunk.text.trim());
+            }
+            if (typeof chunk.output_text === 'string' && chunk.output_text.trim()) {
+              textParts.push(chunk.output_text.trim());
+            }
+          }
+        });
+      }
+
+      if (Array.isArray(node.output)) collect(node.output);
+      if (Array.isArray(node.choices)) collect(node.choices);
+      if (node.message) collect(node.message);
+      if (node.result) collect(node.result);
+      if (node.data) collect(node.data);
+    }
+
+    collect(payload);
+
+    const unique = [];
+    for (const part of textParts) {
+      if (!unique.includes(part)) unique.push(part);
+    }
+
+    return unique.join(' ').trim();
+  }
+
+  function handleExplanationPopoverOpenChange(chartKey, nextOpen) {
+    setActiveExplanationKey((current) => {
+      if (nextOpen) {
+        if (!explanationText[chartKey]) fetchExplanation(chartKey);
+        return chartKey;
+      }
+      return current === chartKey ? null : current;
+    });
+  }
+
+  async function fetchExplanation(chartKey) {
+    setExplanationLoadingMap((state) => ({ ...state, [chartKey]: true }));
+    try {
+      const localSummary = chartExplanations[chartKey] ?? '';
+      const responseConstraint = 'Return exactly one concise actionable insight for LGU staff (max 22 words). No filler, no redundancy, no labels, no bullets, no markdown.';
+      const promptTemplates = {
+        feedbacks: `${responseConstraint} Context: Explain what the Feedbacks donut implies and the best next move. Summary: ${localSummary}`,
+        complaints: `${responseConstraint} Context: Explain what the Complaints donut proportions imply and what officials should do next. Summary: ${localSummary}`,
+        verified: `${responseConstraint} Context: Explain verified vs not-verified distribution and the highest-impact next step. Summary: ${localSummary}`,
+        trend: `${responseConstraint} Context: Summarize trend peaks or dips and one direct operational action. Summary: ${localSummary}`,
+        funnel: `${responseConstraint} Context: Identify the funnel bottleneck and one process fix. Summary: ${localSummary}`,
+        responseWindow: `${responseConstraint} Context: Explain response-window distribution and immediate priority. Summary: ${localSummary}`,
+        serviceVolume: `${responseConstraint} Context: Identify which service categories need focus and one concrete action. Summary: ${localSummary}`,
+        locationVolume: `${responseConstraint} Context: Identify which locations need focus and one concrete action. Summary: ${localSummary}`,
+        officePerformance: `${responseConstraint} Context: Interpret office performance spread and one management action. Summary: ${localSummary}`,
+        barangayPerformance: `${responseConstraint} Context: Interpret barangay performance spread and one management action. Summary: ${localSummary}`,
+      };
+
+      const prompt = promptTemplates[chartKey] ?? `${responseConstraint} Context: Explain chart ${chartKey}. Summary: ${localSummary}`;
+
+      // Do not send a hard-coded model; let the server default to `NEXT_GROQ_MODEL`.
+      const payload = { prompt, max_tokens: 350 };
+
+      const resp = await fetch('/api/groq-explain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const err = json?.error ?? json;
+        const errText = typeof err === 'string' ? err : JSON.stringify(err, null, 2);
+        setExplanationText((s) => ({ ...s, [chartKey]: normalizeActionableInsight(`Error: ${errText}`) }));
+        return;
+      }
+
+      const respData = json?.data ?? json;
+      const extractedText = extractTextFromAiResponse(respData);
+      const text = extractedText || chartExplanations?.[chartKey] || '';
+
+      setExplanationText((s) => ({ ...s, [chartKey]: normalizeActionableInsight(text) }));
+    } catch (e) {
+      setExplanationText((s) => ({ ...s, [chartKey]: normalizeActionableInsight(`Failed to fetch explanation: ${e?.message ?? String(e)}`) }));
+    } finally {
+      setExplanationLoadingMap((state) => ({ ...state, [chartKey]: false }));
+    }
   }
 
   function setDonutHover(chartKey, index) {
@@ -1292,21 +1430,37 @@ export default function DashboardPage() {
   }
 
   function renderChartTools(chartKey, exportConfig, leadingActions = null) {
+    const isActive = activeExplanationKey === chartKey;
+    const isLoading = Boolean(explanationLoadingMap?.[chartKey]);
+
     return (
       <div className={styles.chartActions}>
         {leadingActions}
 
-        <Button
-          type="button"
-          variant={activeExplanationKey === chartKey ? 'secondary' : 'ghost'}
-          size="icon"
-          className={styles.chartIconButton}
-          aria-label="Explain this chart"
-          title="Explain this chart"
-          onClick={() => toggleExplanation(chartKey)}
+        <Popover
+          align="end"
+          open={isActive}
+          onOpenChange={(open) => handleExplanationPopoverOpenChange(chartKey, open)}
+          panelClassName={styles.explainPopoverPanel}
+          trigger={(
+            <Button
+              type="button"
+              variant={isActive ? 'secondary' : 'ghost'}
+              size="icon"
+              className={`${styles.chartIconButton} ${isActive ? styles.chartIconButtonActive : ''}`}
+              aria-label={isActive ? 'Hide actionable insights' : 'Show actionable insights'}
+              aria-expanded={isActive}
+              title={isActive ? 'Hide actionable insights' : 'Show actionable insights'}
+            >
+              <span className={styles.explainButtonInner}>
+                <Sparkle size={16} weight={isLoading ? 'duotone' : 'bold'} />
+                {isActive ? <span className={`${styles.explainActiveDot} ${isLoading ? styles.explainActiveDotLoading : ''}`} /> : null}
+              </span>
+            </Button>
+          )}
         >
-          <Sparkle size={16} weight="bold" />
-        </Button>
+          {renderExplanationPopoverContent(chartKey)}
+        </Popover>
 
         <Menu
           align="end"
@@ -1324,6 +1478,36 @@ export default function DashboardPage() {
             </Button>
           )}
         />
+      </div>
+    );
+  }
+
+  function renderExplanationPopoverContent(chartKey) {
+    const raw = explanationText?.[chartKey];
+    const fallback = chartExplanations?.[chartKey] ?? '';
+    const isLoading = Boolean(explanationLoadingMap?.[chartKey]);
+
+    if (isLoading && !raw) {
+      return (
+        <div className={styles.explainPopoverBody}>
+          <div className={styles.explainHeader}>
+            <Sparkle size={16} weight="duotone" />
+            <span className={styles.explainLabel}>ACTIONABLE INSIGHTS:</span>
+            <span className={styles.explainText}>Generating concise insight...</span>
+          </div>
+        </div>
+      );
+    }
+
+    const content = normalizeActionableInsight(raw ?? fallback);
+
+    return (
+      <div className={styles.explainPopoverBody}>
+        <div className={styles.explainHeader}>
+          <Sparkle size={16} weight="bold" />
+          <span className={styles.explainLabel}>ACTIONABLE INSIGHTS:</span>
+          <span className={styles.explainText}>{content}</span>
+        </div>
       </div>
     );
   }
@@ -1475,7 +1659,6 @@ export default function DashboardPage() {
               rows: feedbacksChart.map((item) => ({ label: item.name, count: item.value })),
             })}
           </div>
-          {activeExplanationKey === 'feedbacks' ? <div className={styles.summaryBox}>{chartExplanations.feedbacks}</div> : null}
           <div className={styles.dashboardDonutBody}>
             <DashboardDonutChart
               data={feedbacksChart}
@@ -1495,7 +1678,6 @@ export default function DashboardPage() {
               rows: complaintsChart.map((item) => ({ label: item.name, count: item.value })),
             })}
           </div>
-          {activeExplanationKey === 'complaints' ? <div className={styles.summaryBox}>{chartExplanations.complaints}</div> : null}
           <div className={styles.dashboardDonutBody}>
             <DashboardDonutChart
               data={complaintsChart}
@@ -1515,7 +1697,6 @@ export default function DashboardPage() {
               rows: verifiedChart.map((item) => ({ label: item.name, count: item.value })),
             })}
           </div>
-          {activeExplanationKey === 'verified' ? <div className={styles.summaryBox}>{chartExplanations.verified}</div> : null}
           <div className={styles.dashboardDonutBody}>
             <DashboardDonutChart
               data={verifiedChart}
@@ -1555,8 +1736,6 @@ export default function DashboardPage() {
             rows: feedbacksOverTimeData,
           })}
         </div>
-
-        {activeExplanationKey === 'trend' ? <div className={styles.summaryBox}>{chartExplanations.trend}</div> : null}
 
         <div className={styles.dashboardTrendChartBody}>
           <ResponsiveContainer width="100%" height={320}>
@@ -1612,7 +1791,6 @@ export default function DashboardPage() {
               rows: resolutionFunnel.map((step) => ({ stage: step.label, count: step.value })),
             })}
           </div>
-          {activeExplanationKey === 'funnel' ? <div className={styles.summaryBox}>{chartExplanations.funnel}</div> : null}
           <div className={styles.dashboardFunnelBody}>
             <div className={styles.dashboardFunnelStack}>
               {resolutionFunnel.map((step, index) => {
@@ -1644,7 +1822,6 @@ export default function DashboardPage() {
               rows: responseWindowChart.map((item) => ({ status: item.name, count: item.value })),
             })}
           </div>
-          {activeExplanationKey === 'responseWindow' ? <div className={styles.summaryBox}>{chartExplanations.responseWindow}</div> : null}
           <div className={styles.dashboardDonutBody}>
             <DashboardDonutChart
               data={responseWindowChart}
@@ -1672,7 +1849,6 @@ export default function DashboardPage() {
                   rows: topServiceCategories,
                 })}
               </div>
-              {activeExplanationKey === 'serviceVolume' ? <div className={styles.summaryBox}>{chartExplanations.serviceVolume}</div> : null}
               <div className={styles.dashboardLargeChartBody}>
                 <DashboardStackedChart data={topServiceCategories} />
               </div>
@@ -1687,7 +1863,6 @@ export default function DashboardPage() {
                   rows: topIncidentLocations,
                 })}
               </div>
-              {activeExplanationKey === 'locationVolume' ? <div className={styles.summaryBox}>{chartExplanations.locationVolume}</div> : null}
               <div className={styles.dashboardLargeChartBody}>
                 <DashboardStackedChart data={topIncidentLocations} />
               </div>
@@ -1708,7 +1883,6 @@ export default function DashboardPage() {
                   performanceMetricTrigger,
                 )}
               </div>
-              {activeExplanationKey === 'officePerformance' ? <div className={styles.summaryBox}>{chartExplanations.officePerformance}</div> : null}
               <div className={styles.dashboardLargeChartBody}>
                 <DashboardPerformanceChart data={topOfficesByPerformance} metric={performanceMetric} />
               </div>
@@ -1727,7 +1901,6 @@ export default function DashboardPage() {
                   performanceMetricTrigger,
                 )}
               </div>
-              {activeExplanationKey === 'barangayPerformance' ? <div className={styles.summaryBox}>{chartExplanations.barangayPerformance}</div> : null}
               <div className={styles.dashboardLargeChartBody}>
                 <DashboardPerformanceChart data={topBarangaysByPerformance} metric={performanceMetric} />
               </div>

@@ -27,6 +27,7 @@ import {
   normalizeText,
   scopePostsToWorkspace,
 } from '@core/lib/adminWorkspace.js';
+import { formatMoodLabel, getMoodEmoji } from '@core/utils/mood.js';
 import { createPresetAdminDateRange, isDefaultAdminDateRange } from '@core/lib/adminDateRange.js';
 import { exportRowsToXlsx } from '@core/lib/exporters.js';
 import { lockPageScroll } from '@core/utils/lockPageScroll.js';
@@ -238,6 +239,17 @@ function getDisplayHandle(value) {
   return normalized.replace(/^@+/, '');
 }
 
+function resolveFeedbackMood(post) {
+  const moodValue = post?.finalMood ?? post?.predictedMood ?? null;
+  const label = formatMoodLabel(moodValue);
+  if (!label) return null;
+
+  return {
+    label,
+    emoji: getMoodEmoji(moodValue),
+  };
+}
+
 function isComplaintFeedback(post) {
   return normalizeText(post?.type) === 'complaint';
 }
@@ -284,7 +296,9 @@ function buildStatusTimeline(post) {
     },
   ];
 
-  if (verification === 'Verified') {
+  // Resolution sub-status tracking only applies to complaints;
+  // compliments and suggestions are simply marked Verified with no further resolution flow
+  if (verification === 'Verified' && normalizeText(post?.type) === 'complaint') {
     timeline.push({
       key: 'resolution',
       label: resolution,
@@ -378,12 +392,10 @@ function getStatusLabel(post) {
 }
 
 function formatInlineComplaintStatus(post) {
-  if (!isComplaintFeedback(post)) return '';
-
   const status = getStatusLabel(post);
   const responseWindow = formatResponseWindow(post);
 
-  if (post.verificationStatus === 'Under Review' && responseWindow !== 'N/A') {
+  if (isComplaintFeedback(post) && post.verificationStatus === 'Under Review' && responseWindow !== 'N/A') {
     return `${status} - ${responseWindow}`;
   }
 
@@ -392,7 +404,7 @@ function formatInlineComplaintStatus(post) {
 
 function getVerificationDescription(value) {
   if (value === 'Under Review') return 'Keep the feedback in intake while the office checks details.';
-  if (value === 'Verified') return 'Confirm this is actionable and unlock resolution tracking.';
+  if (value === 'Verified') return 'Acknowledged as valid feedback.';
   if (value === 'Dismissed') return 'Close this as not actionable for the current workflow.';
   return '';
 }
@@ -436,10 +448,8 @@ function getDismissReportItems(post) {
 }
 
 function FeedbackDetailsPopover({ post, typeLabel, relativeTime }) {
-  const flags = [
-    ...(post.reportReasons ?? []),
-    post.aiFlagged ? post.aiFlagReason : '',
-  ].filter(Boolean);
+  const displayLocation = String(post.location ?? '').trim();
+  const moodSummary = resolveFeedbackMood(post);
 
   return (
     <div className={styles.feedbackDetails}>
@@ -468,30 +478,23 @@ function FeedbackDetailsPopover({ post, typeLabel, relativeTime }) {
           </div>
           <div className={styles.detailsRow}>
             <span>Service Category</span>
-            <strong>{post.service || '-'}</strong>
+            {post.service ? <strong>{post.service}</strong> : <span className={styles.detailsEmpty}>-</span>}
           </div>
           <div className={styles.detailsRow}>
             <span>Location of Incident</span>
-            <strong>{post.location || '-'}</strong>
+            {displayLocation ? <strong>{displayLocation}</strong> : <span className={styles.detailsEmpty}>-</span>}
           </div>
         </div>
       </div>
-      <div className={styles.statusSection}>
-        <div className={styles.statusRow}>
-          <span className={styles.statusLabel}>Status</span>
-          <strong>{isComplaintFeedback(post) ? `${getStatusLabel(post)} / ${formatResponseWindow(post)}` : 'Status N/A'}</strong>
+
+      {moodSummary ? (
+        <div className={styles.moodSection}>
+          <div className={styles.moodRow}>
+            <span className={styles.moodEmoji}>{moodSummary.emoji}</span>
+            <span className={styles.moodLabel}>The mood of this feedback is <strong>{moodSummary.label.toLowerCase()}</strong></span>
+          </div>
         </div>
-      </div>
-      <div className={styles.flagsSection}>
-        {flags.length > 0 ? (
-          <>
-            <div className={styles.flagsSubheader}>This post might contain:</div>
-            <div className={styles.flagsCommaList}>{flags.join(', ')}</div>
-          </>
-        ) : (
-          <div className={styles.flagsNone}>No content flags.</div>
-        )}
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -972,13 +975,17 @@ function StatusUpdateModal({
 }) {
   const [savingStatus, setSavingStatus] = useState('');
   const [confirmMode, setConfirmMode] = useState('');
-  const [verifyReason, setVerifyReason] = useState('');
+  const [verifyChecklist, setVerifyChecklist] = useState([]);
   const [verifyError, setVerifyError] = useState('');
-  const [dismissReason, setDismissReason] = useState('');
+  const [dismissReason, setDismissReason] = useState([]);
   const [dismissError, setDismissError] = useState('');
   const [routeDestination, setRouteDestination] = useState('');
   const [routeNote, setRouteNote] = useState('');
   const [routeError, setRouteError] = useState('');
+  const [resolutionNote, setResolutionNote] = useState('');
+  const [resolutionPhotos, setResolutionPhotos] = useState([]);
+  const [resolutionError, setResolutionError] = useState('');
+  const resolutionPhotoRef = useRef(null);
 
   useEffect(() => {
     setSavingStatus('');
@@ -987,20 +994,27 @@ function StatusUpdateModal({
 
   if (!post) return null;
 
-  const canUpdate = isComplaintFeedback(post);
+  // All feedback types (complaints, suggestions, compliments) can be verified, dismissed,
+  // transferred, and delegated. Resolution tracking (In Progress / On Hold / Resolved) is
+  // complaint-only and is handled downstream in composeStatus and buildStatusTimeline.
+  const canUpdate = true;
+  const isComplaint = isComplaintFeedback(post);
   const isUnderReview = post.verificationStatus === 'Under Review';
   const timeline = buildStatusTimeline(post);
   const dismissReportItems = getDismissReportItems(post);
 
   function closeConfirm() {
     setConfirmMode('');
-    setVerifyReason('');
+    setVerifyChecklist([]);
     setVerifyError('');
-    setDismissReason('');
+    setDismissReason([]);
     setDismissError('');
     setRouteDestination('');
     setRouteNote('');
     setRouteError('');
+    setResolutionNote('');
+    setResolutionPhotos([]);
+    setResolutionError('');
   }
 
   function openConfirm(mode) {
@@ -1008,6 +1022,7 @@ function StatusUpdateModal({
     setVerifyError('');
     setDismissError('');
     setRouteError('');
+    setResolutionError('');
     setConfirmMode(mode);
   }
 
@@ -1025,25 +1040,38 @@ function StatusUpdateModal({
   }
 
   async function submitVerify() {
-    const nextResolution = post.resolutionStatus === 'Not Started' ? 'In Progress' : post.resolutionStatus;
-    if (!verifyReason) {
-      setVerifyError('Select a verification reason.');
+    // Complaints auto-enter In Progress when verified (resolution tracking begins).
+    // Compliments and suggestions stay at Verified — no resolution sub-status assigned.
+    const nextResolution = isComplaint
+      ? (post.resolutionStatus === 'Not Started' ? 'In Progress' : post.resolutionStatus)
+      : post.resolutionStatus;
+
+    if (!verificationChecklistComplete) {
+      setVerifyError('Complete every verification requirement.');
       return;
     }
 
     setVerifyError('');
-    await submitStatus('Verified', nextResolution, { adminNotes: `Verify reason: ${verifyReason}` });
+    // No adminNotes passed — notes are only relevant for transfer/delegate
+    await submitStatus('Verified', nextResolution);
+  }
+
+  function toggleVerifyChecklistItem(item) {
+    setVerifyChecklist((current) => (
+      current.includes(item)
+        ? current.filter((value) => value !== item)
+        : [...current, item]
+    ));
+    setVerifyError('');
   }
 
   function submitDismiss() {
-    if (!dismissReason) {
-      setDismissError('Select a dismissal reason.');
+    if (dismissReason.length === 0) {
+      setDismissError('Select at least one reason for dismissal.');
       return;
     }
-
-    submitStatus('Dismissed', post.resolutionStatus, {
-      adminNotes: `Dismiss reason: ${dismissReason}`,
-    });
+    // No adminNotes passed — notes are only relevant for transfer/delegate
+    submitStatus('Dismissed', post.resolutionStatus);
   }
 
   async function submitAdminAction() {
@@ -1067,20 +1095,82 @@ function StatusUpdateModal({
     }
   }
 
+  async function submitResolutionAction() {
+    const note = resolutionNote.trim();
+    const isPhotoRequired = confirmMode === 'add-progress' || confirmMode === 'resolved';
+
+    if (confirmMode !== 'back-to-progress') {
+      if (!note) {
+        setResolutionError('A note is required.');
+        return;
+      }
+      if (isPhotoRequired && resolutionPhotos.length === 0) {
+        setResolutionError('At least one photo is required as evidence.');
+        return;
+      }
+    }
+
+    setResolutionError('');
+
+    let uploadedUrls = [];
+    if (resolutionPhotos.length > 0) {
+      setSavingStatus('uploading');
+      try {
+        const { data, error: uploadErr } = await uploadMediaFiles(resolutionPhotos, { folder: 'resolution' });
+        if (uploadErr) {
+          setResolutionError(`Photo upload failed: ${uploadErr.message}`);
+          setSavingStatus('');
+          return;
+        }
+        uploadedUrls = data ?? [];
+      } catch {
+        setResolutionError('Photo upload failed. Please try again.');
+        setSavingStatus('');
+        return;
+      }
+    }
+
+    const nextResolution = confirmMode === 'resolved' ? 'Resolved'
+      : confirmMode === 'on-hold' ? 'On Hold'
+      : 'In Progress';
+
+    const adminNotes = [note, uploadedUrls.length > 0 ? `Evidence: ${uploadedUrls.join(', ')}` : ''].filter(Boolean).join('\n') || null;
+
+
+    await submitStatus('Verified', nextResolution, { adminNotes });
+  }
+
   const isVerifyConfirm = confirmMode === 'verify';
   const isDismissConfirm = confirmMode === 'dismiss';
   const isTransferConfirm = confirmMode === 'transfer';
   const isDelegateConfirm = confirmMode === 'delegate';
   const isRoutingConfirm = isTransferConfirm || isDelegateConfirm;
+  const isAddProgressConfirm = confirmMode === 'add-progress';
+  const isOnHoldConfirm = confirmMode === 'on-hold';
+  const isResolvedConfirm = confirmMode === 'resolved';
+  const isBackToProgressConfirm = confirmMode === 'back-to-progress';
+  const isResolutionConfirm = isAddProgressConfirm || isOnHoldConfirm || isResolvedConfirm || isBackToProgressConfirm;
+  const verificationChecklistComplete = VERIFY_REASON_OPTIONS.every((item) => verifyChecklist.includes(item));
   const confirmTitle = isVerifyConfirm
     ? 'Verify feedback'
     : isDismissConfirm
       ? 'Dismiss feedback'
       : isTransferConfirm
         ? 'Transfer feedback'
-        : 'Delegate feedback';
+        : isDelegateConfirm
+          ? 'Delegate feedback'
+          : isAddProgressConfirm
+            ? 'Add progress update'
+            : isOnHoldConfirm
+              ? 'Put on hold'
+              : isResolvedConfirm
+                ? 'Mark as resolved'
+                : 'Resume: In Progress';
   const currentAdminInCharge = post.office || post.service || 'Unassigned office';
   const routingOptions = isDelegateConfirm ? barangayOptions : officeOptions;
+  const showResolutionActions = canUpdate && isComplaint && !isUnderReview
+    && post.verificationStatus === 'Verified'
+    && (post.resolutionStatus === 'In Progress' || post.resolutionStatus === 'On Hold');
 
   return (
     <div
@@ -1147,27 +1237,94 @@ function StatusUpdateModal({
                           </div>
                         </div>
                       ) : showSuperAdminActions ? (
-                        <div className={styles.statusTimelineAssigneeSection}>
-                          <div className={styles.statusTimelineAssignee}>
-                            In-charge: {currentAdminInCharge}
+                        <div className={styles.statusTimelineActionRows}>
+                          <div className={styles.statusTimelineAssigneeSection}>
+                            <div className={styles.statusTimelineAssignee}>
+                              In-charge: {currentAdminInCharge}
+                            </div>
+                            <div className={styles.statusTimelineActionsBelow}>
+                              <button
+                                type="button"
+                                className={styles.statusTimelineAction}
+                                onClick={() => openConfirm('transfer')}
+                                disabled={Boolean(savingStatus)}
+                              >
+                                Transfer
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.statusTimelineAction}
+                                onClick={() => openConfirm('delegate')}
+                                disabled={Boolean(savingStatus)}
+                              >
+                                Delegate
+                              </button>
+                            </div>
                           </div>
+
+                          <div className={styles.statusTimelineActionsTakeRow}>
+                            <span className={styles.statusTimelineActionsLabel}>Take actions</span>
+                            <div className={styles.statusTimelineActionsBelow}>
+                              <button
+                                type="button"
+                                className={`${styles.statusTimelineAction} ${styles.statusTimelineActionPrimary}`}
+                                onClick={() => openConfirm('verify')}
+                                disabled={Boolean(savingStatus)}
+                              >
+                                {savingStatus.startsWith('Verified-') ? 'Verifying...' : 'Verify'}
+                              </button>
+                              <button
+                                type="button"
+                                className={`${styles.statusTimelineAction} ${styles.statusTimelineActionDanger}`}
+                                onClick={() => openConfirm('dismiss')}
+                                disabled={Boolean(savingStatus)}
+                              >
+                                {savingStatus.startsWith('Dismissed-') ? 'Dismissing...' : 'Dismiss'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                      {showResolutionActions && item.key === 'resolution' ? (
+                        <div className={styles.statusTimelineAssigneeSection}>
                           <div className={styles.statusTimelineActionsBelow}>
-                            <button
-                              type="button"
-                              className={styles.statusTimelineAction}
-                              onClick={() => openConfirm('transfer')}
-                              disabled={Boolean(savingStatus)}
-                            >
-                              Transfer
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.statusTimelineAction}
-                              onClick={() => openConfirm('delegate')}
-                              disabled={Boolean(savingStatus)}
-                            >
-                              Delegate
-                            </button>
+                            {post.resolutionStatus === 'In Progress' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className={styles.statusTimelineAction}
+                                  onClick={() => openConfirm('add-progress')}
+                                  disabled={Boolean(savingStatus)}
+                                >
+                                  Add Progress
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.statusTimelineAction}
+                                  onClick={() => openConfirm('on-hold')}
+                                  disabled={Boolean(savingStatus)}
+                                >
+                                  On Hold
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`${styles.statusTimelineAction} ${styles.statusTimelineActionPrimary}`}
+                                  onClick={() => openConfirm('resolved')}
+                                  disabled={Boolean(savingStatus)}
+                                >
+                                  Resolved
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                className={styles.statusTimelineAction}
+                                onClick={() => openConfirm('back-to-progress')}
+                                disabled={Boolean(savingStatus)}
+                              >
+                                Back to In Progress
+                              </button>
+                            )}
                           </div>
                         </div>
                       ) : null}
@@ -1273,35 +1430,132 @@ function StatusUpdateModal({
                   {routeError ? <span className={styles.statusConfirmError}>{routeError}</span> : null}
                 </>
               ) : isVerifyConfirm ? (
-                <label className={styles.statusConfirmField}>
-                  <CustomDropdown
-                    value={verifyReason}
-                    onChange={(val) => {
-                      setVerifyReason(val);
-                      setVerifyError('');
-                    }}
-                    options={VERIFY_REASON_OPTIONS}
-                    placeholder="Select verification reason"
-                    disabled={Boolean(savingStatus)}
-                    ariaLabel="Verification reason"
-                  />
+                <div className={styles.statusConfirmField}>
+                  <div className={styles.statusVerifyChecklistHeader}>
+                    <strong>Requirements met</strong>
+                    <span>{verifyChecklist.length}/{VERIFY_REASON_OPTIONS.length}</span>
+                  </div>
+                  <div className={styles.statusVerifyChecklist}>
+                    {VERIFY_REASON_OPTIONS.map((item) => (
+                      <label key={item} className={styles.statusVerifyChecklistItem}>
+                        <input
+                          type="checkbox"
+                          checked={verifyChecklist.includes(item)}
+                          onChange={() => toggleVerifyChecklistItem(item)}
+                          disabled={Boolean(savingStatus)}
+                        />
+                        <span>{item}</span>
+                      </label>
+                    ))}
+                  </div>
                   {verifyError ? <span className={styles.statusConfirmError}>{verifyError}</span> : null}
-                </label>
+                </div>
+              ) : isResolutionConfirm ? (
+                <div className={styles.statusConfirmField}>
+                  {isBackToProgressConfirm ? (
+                    <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-secondary, #888)' }}>
+                      This will move the feedback back to <strong>In Progress</strong> and resume resolution tracking.
+                    </p>
+                  ) : (
+                    <>
+                      <label className={styles.statusConfirmField}>
+                        <span style={{ display: 'block', marginBottom: '6px', fontSize: '0.8125rem', fontWeight: 600 }}>
+                          {isOnHoldConfirm ? 'Reason for holding *' : isResolvedConfirm ? 'Resolution summary *' : 'Progress note *'}
+                        </span>
+                        <textarea
+                          className={styles.statusConfirmTextarea}
+                          aria-label="Resolution note"
+                          placeholder={
+                            isOnHoldConfirm
+                              ? 'Describe why this is being put on hold...'
+                              : isResolvedConfirm
+                                ? 'Describe what was done to resolve this issue...'
+                                : 'Describe progress made on this feedback...'
+                          }
+                          rows={4}
+                          maxLength={500}
+                          value={resolutionNote}
+                          onChange={(e) => { setResolutionNote(e.target.value.slice(0, 500)); setResolutionError(''); }}
+                          disabled={Boolean(savingStatus)}
+                        />
+                        <span className={styles.statusConfirmCharCount}>{resolutionNote.length}/500</span>
+                      </label>
+                      {(isAddProgressConfirm || isResolvedConfirm) && (
+                        <div style={{ marginTop: '10px' }}>
+                          <span style={{ display: 'block', marginBottom: '6px', fontSize: '0.8125rem', fontWeight: 600 }}>Photo evidence *</span>
+                          <button
+                            type="button"
+                            className={styles.statusTimelineAction}
+                            onClick={() => resolutionPhotoRef.current?.click()}
+                            disabled={Boolean(savingStatus)}
+                            style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                          >
+                            <Paperclip size={15} /> Attach photos
+                          </button>
+                          <input
+                            ref={resolutionPhotoRef}
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            style={{ display: 'none' }}
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files ?? []).slice(0, 5);
+                              setResolutionPhotos(files);
+                              setResolutionError('');
+                              e.target.value = '';
+                            }}
+                          />
+                          {resolutionPhotos.length > 0 && (
+                            <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              {resolutionPhotos.map((f, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem', padding: '4px 8px', borderRadius: '6px', background: 'var(--surface-2, #f0f0f0)' }}>
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '180px' }}>{f.name}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setResolutionPhotos((prev) => prev.filter((_, j) => j !== i))}
+                                    aria-label="Remove photo"
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                                  >
+                                    <X size={13} />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {resolutionError ? <span className={styles.statusConfirmError}>{resolutionError}</span> : null}
+                </div>
               ) : (
-                <label className={styles.statusConfirmField}>
-                  <CustomDropdown
-                    value={dismissReason}
-                    onChange={(val) => {
-                      setDismissReason(val);
-                      setDismissError('');
-                    }}
-                    options={DISMISS_REASON_OPTIONS}
-                    placeholder="Select dismissal reason"
-                    disabled={Boolean(savingStatus)}
-                    ariaLabel="Dismissal reason"
-                  />
+                <div className={styles.statusConfirmField}>
+                  <div className={styles.statusVerifyChecklistHeader}>
+                    <strong>Reason for dismissal</strong>
+                    <span>{dismissReason.length} selected</span>
+                  </div>
+                  <div className={styles.statusVerifyChecklist}>
+                    {DISMISS_REASON_OPTIONS.map((item) => (
+                      <label key={item} className={styles.statusVerifyChecklistItem}>
+                        <input
+                          type="checkbox"
+                          checked={dismissReason.includes(item)}
+                          onChange={() => {
+                            setDismissReason((current) =>
+                              current.includes(item)
+                                ? current.filter((v) => v !== item)
+                                : [...current, item]
+                            );
+                            setDismissError('');
+                          }}
+                          disabled={Boolean(savingStatus)}
+                        />
+                        <span>{item}</span>
+                      </label>
+                    ))}
+                  </div>
                   {dismissError ? <span className={styles.statusConfirmError}>{dismissError}</span> : null}
-                </label>
+                </div>
               )}
             </div>
 
@@ -1320,16 +1574,23 @@ function StatusUpdateModal({
                   styles.statusConfirmPrimary,
                   isDismissConfirm ? styles.statusConfirmDanger : '',
                 ].join(' ')}
-                onClick={isRoutingConfirm ? submitAdminAction : isVerifyConfirm ? submitVerify : submitDismiss}
-                disabled={Boolean(savingStatus)}
+                onClick={
+                  isRoutingConfirm ? submitAdminAction
+                    : isVerifyConfirm ? submitVerify
+                    : isResolutionConfirm ? submitResolutionAction
+                    : submitDismiss
+                }
+                disabled={Boolean(savingStatus) || (isVerifyConfirm && !verificationChecklistComplete)}
               >
-                {isVerifyConfirm
-                  ? (savingStatus ? 'Verifying...' : 'Verify')
-                  : isDismissConfirm
-                    ? (savingStatus ? 'Dismissing...' : 'Dismiss')
-                    : isTransferConfirm
-                      ? (savingStatus ? 'Transferring...' : 'Transfer')
-                      : (savingStatus ? 'Delegating...' : 'Delegate')}
+                {savingStatus === 'uploading' ? 'Uploading...'
+                  : isVerifyConfirm ? (savingStatus ? 'Verifying...' : 'Verify')
+                  : isDismissConfirm ? (savingStatus ? 'Dismissing...' : 'Dismiss')
+                  : isTransferConfirm ? (savingStatus ? 'Transferring...' : 'Transfer')
+                  : isDelegateConfirm ? (savingStatus ? 'Delegating...' : 'Delegate')
+                  : isAddProgressConfirm ? (savingStatus ? 'Saving...' : 'Save Progress')
+                  : isOnHoldConfirm ? (savingStatus ? 'Updating...' : 'Put On Hold')
+                  : isResolvedConfirm ? (savingStatus ? 'Resolving...' : 'Mark Resolved')
+                  : (savingStatus ? 'Updating...' : 'Confirm')}
               </button>
             </footer>
           </section>
@@ -1706,13 +1967,10 @@ export default function FeedbacksPage() {
   }, [filteredPosts, isFilteredView]);
 
   async function handleStatusPatch(post, nextVerification, nextResolution, options = {}) {
-    if (!isComplaintFeedback(post)) {
-      showToast('Only complaint feedback can be updated.', 'warning');
-      return false;
-    }
-
+    // All feedback types can be verified or dismissed.
+    // composeStatus uses post.type to decide whether to enter resolution tracking.
     try {
-      const nextStatus = composeStatus(nextVerification, nextResolution);
+      const nextStatus = composeStatus(nextVerification, nextResolution, post.type);
       await changeStatus(post.id, nextStatus, options);
       showToast(`Feedback ${post.feedbackNo ?? ''} updated to ${nextStatus}.`, 'success');
       await reload();
@@ -1724,11 +1982,6 @@ export default function FeedbacksPage() {
   }
 
   async function handleDismiss(post) {
-    if (!isComplaintFeedback(post)) {
-      showToast('Only complaint feedback can be updated.', 'warning');
-      return;
-    }
-
     if (!dismissReasonDraft.trim()) return;
     await handleStatusPatch(post, 'Dismissed', post.resolutionStatus);
     showToast('Dismissal reason saved locally for this session.', 'info', 3000);
@@ -1766,6 +2019,7 @@ export default function FeedbacksPage() {
 
     const actionLabel = type === 'delegate' ? 'Delegation' : 'Transfer';
     const adminNotes = `${actionLabel}: ${destination}\nNote: ${note}`;
+
 
     try {
       await changeStatus(post.id, post.status, { adminNotes });

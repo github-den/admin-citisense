@@ -11,23 +11,18 @@ function normalizeType(row) {
 }
 
 function normalizeStatus(row) {
-  const type = normalizeType(row);
-  if (type !== 'complaint') return null;
-
-  const raw = row?.status ?? null;
-
-  // DB post_status enum uses snake_case — map to display labels
-  // NULL means the post predates the enum migration — default to Under Review
-  const ENUM_MAP = {
-    under_review: 'Under Review',
-    in_progress:  'In Progress',
-    on_hold:      'On Hold',
-    resolved:     'Resolved',
-    dismissed:    'Dismissed',
-  };
-  if (raw && ENUM_MAP[raw]) return ENUM_MAP[raw];
-
-  // Fallback: null or unrecognized → Under Review (system default for complaints)
+  if (row?.dismissed) return 'Dismissed';
+  if (row?.is_verified_post) {
+    const type = normalizeType(row);
+    if (type === 'complaint') {
+      const raw = row?.status ?? null;
+      if (raw === 'in-progress' || raw === 'in_progress') return 'In Progress';
+      if (raw === 'on-hold' || raw === 'on_hold') return 'On Hold';
+      if (raw === 'resolved') return 'Resolved';
+      return 'In Progress';
+    }
+    return 'Verified';
+  }
   return 'Under Review';
 }
 

@@ -3,12 +3,15 @@ import { mapPosts } from '@core/utils/postMapper.js';
 import { buildReactionSummaryMap, summarizeMoodFromReactionRows, summarizeMoodFromStoredMoodRows, normalizeCityMoodResult } from '@core/utils/mood.js';
 
 const STATUS_TO_DB = {
-  'Under Review': 'under_review',
-  'In Progress': 'in_progress',
-  'On Hold': 'on_hold',
-  'On hold': 'on_hold',
+  'Under Review': null,
+  // Standalone 'Verified' is only used for non-complaints (compliments/suggestions)
+  // Complaints are never stored as 'verified'; they go directly to in-progress/on-hold/resolved
+  Verified: null,
+  'In Progress': 'in-progress',
+  'On Hold': 'on-hold',
+  'On hold': 'on-hold',
   Resolved: 'resolved',
-  Dismissed: 'dismissed',
+  Dismissed: null,
 };
 
 const VERIFIED_STATUSES = ['In Progress', 'On Hold', 'Resolved'];
@@ -279,24 +282,56 @@ export async function getAdminPosts({ status, type, page = 0, limit } = {}) {
 export async function updatePostStatus(postId, status, { adminNotes = null } = {}) {
   if (!supabase) return;
 
-  const mappedStatus = STATUS_TO_DB[status] ?? status;
-  const rpcResult = await supabase.rpc('set_post_status', {
-    p_post_id: postId,
-    p_status: mappedStatus,
-    p_admin_notes: adminNotes,
-  });
+  const patch = {};
+  if (status === 'Under Review') {
+    patch.status = null;
+    patch.is_verified_post = false;
+    patch.dismissed = false;
+    patch.dismissed_by = null;
+    patch.dismissed_at = null;
+    patch.dismissed_reason = null;
+  } else if (status === 'Verified') {
+    patch.status = null;
+    patch.is_verified_post = true;
+    patch.dismissed = false;
+    patch.dismissed_by = null;
+    patch.dismissed_at = null;
+    patch.dismissed_reason = null;
+  } else if (status === 'In Progress') {
+    patch.status = 'in-progress';
+    patch.is_verified_post = true;
+    patch.dismissed = false;
+    patch.dismissed_by = null;
+    patch.dismissed_at = null;
+    patch.dismissed_reason = null;
+  } else if (status === 'On Hold' || status === 'On hold') {
+    patch.status = 'on-hold';
+    patch.is_verified_post = true;
+    patch.dismissed = false;
+    patch.dismissed_by = null;
+    patch.dismissed_at = null;
+    patch.dismissed_reason = null;
+  } else if (status === 'Resolved') {
+    patch.status = 'resolved';
+    patch.is_verified_post = true;
+    patch.dismissed = false;
+    patch.dismissed_by = null;
+    patch.dismissed_at = null;
+    patch.dismissed_reason = null;
+  } else if (status === 'Dismissed') {
+    patch.status = null;
+    patch.is_verified_post = false;
+    patch.dismissed = true;
+    patch.dismissed_at = new Date().toISOString();
+    patch.dismissed_reason = adminNotes || 'No reason provided';
+  }
 
-  if (!rpcResult.error) return;
-
-  const patch = { status: mappedStatus };
-  if (adminNotes) patch.evidence_note = adminNotes;
-
-  const fallback = await supabase
+  const { error } = await supabase
     .from('feedbacks')
     .update(patch)
     .eq('id', postId);
 
-  if (fallback.error) throw fallback.error;
+  if (error) throw error;
 }
 
 export async function deletePost(postId) {

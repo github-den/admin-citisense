@@ -91,7 +91,8 @@ export function filterByDateRange(rows = [], range = 'all', dateKey = 'created_a
 export function deriveVerificationStatus(status) {
   const normalized = normalizeText(status);
   if (normalized === 'dismissed' || normalized === 'invalid' || normalized === 'closed') return 'Dismissed';
-  if (normalized === 'in progress' || normalized === 'on hold' || normalized === 'resolved') return 'Verified';
+  // 'verified' = non-complaint acknowledged; in_progress/on_hold/resolved = complaint sub-statuses of Verified
+  if (normalized === 'verified' || normalized === 'in progress' || normalized === 'on hold' || normalized === 'resolved') return 'Verified';
   return 'Under Review';
 }
 
@@ -103,9 +104,14 @@ export function deriveResolutionStatus(status) {
   return 'Not Started';
 }
 
-export function composeStatus(verification, resolution) {
+// type is optional; pass post.type to correctly handle non-complaint verification
+export function composeStatus(verification, resolution, type = null) {
   if (verification === 'Dismissed') return 'Dismissed';
   if (verification === 'Verified') {
+    const isComplaint = normalizeText(type) === 'complaint';
+    // Only complaints enter the resolution process (In Progress / On Hold / Resolved)
+    // Compliments and suggestions are simply marked 'verified' — no resolution tracking
+    if (!isComplaint) return 'Verified';
     if (resolution === 'Resolved') return 'Resolved';
     if (resolution === 'On Hold') return 'On hold';
     return 'In Progress';

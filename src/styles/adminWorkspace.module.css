@@ -619,6 +619,45 @@
   height: 34px;
 }
 
+.chartIconButtonActive {
+  border-color: color-mix(in srgb, var(--brand) 28%, var(--ui-border));
+  background: color-mix(in srgb, var(--brand) 8%, var(--surface));
+}
+
+.explainButtonInner {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.explainActiveDot {
+  position: absolute;
+  right: -5px;
+  top: -5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #0ea5e9;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.explainActiveDotLoading {
+  animation: explainPulse 1s ease-in-out infinite;
+}
+
+@keyframes explainPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.72);
+    opacity: 0.55;
+  }
+}
+
 .chartBody {
   margin-top: 0;
   height: 260px;
@@ -845,7 +884,7 @@
 
 .summaryBox {
   margin-top: 0;
-  padding: 12px;
+  padding: 12px 12px 11px;
   border-top: 1px solid var(--border-soft);
   border-radius: 0 0 var(--radius-md) var(--radius-md);
   background: var(--surface-2);
@@ -853,6 +892,49 @@
   font-size: 13px;
   line-height: 1.5;
   font-weight: 400;
+}
+
+.explainPopoverPanel {
+  width: min(360px, calc(100vw - 24px));
+  padding: 0;
+  border-radius: 12px;
+}
+
+.explainPopoverBody {
+  padding: 12px 12px 11px;
+}
+
+.explainHeader {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  column-gap: 8px;
+  row-gap: 4px;
+}
+
+.explainLabel {
+  color: var(--ui-text);
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: normal;
+}
+
+.explainText {
+  grid-column: 1 / -1;
+  padding-left: 23px;
+  color: var(--ui-text-muted);
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 500;
+}
+
+@media (max-width: 600px) {
+  .explainText {
+    padding-left: 0;
+  }
 }
 
 .tableMeta {
@@ -1362,6 +1444,76 @@
   font-size: 13px !important;
   font-weight: 760;
   line-height: 1.3;
+}
+
+.statusVerifyChecklistHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.statusVerifyChecklistHeader span {
+  min-height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--ui-border);
+  border-radius: 999px;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-muted);
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px !important;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.statusVerifyChecklist {
+  display: grid;
+  gap: 8px;
+}
+
+.statusVerifyChecklistItem {
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--ui-surface-subtle) 44%, var(--ui-surface));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.statusVerifyChecklistItem:hover {
+  border-color: rgba(148, 163, 184, 0.95);
+  background: var(--ui-surface);
+}
+
+.statusVerifyChecklistItem:focus-within {
+  border-color: rgba(59, 130, 246, 0.44);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.statusVerifyChecklistItem input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--ui-accent);
+  cursor: pointer;
+}
+
+.statusVerifyChecklistItem span {
+  color: var(--ui-text);
+  font-size: 13px !important;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.statusVerifyChecklistItem:has(input:checked) {
+  border-color: rgba(37, 99, 235, 0.34);
+  background: color-mix(in srgb, var(--ui-accent) 8%, var(--ui-surface));
 }
 
 .statusConfirmLabelRow span {
@@ -2790,6 +2942,45 @@
   color: var(--ui-text);
   font-weight: 750;
   text-align: right;
+}
+
+.detailsEmpty {
+  color: var(--ui-text-muted);
+  text-align: right;
+}
+
+.moodSection {
+  margin-top: -12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--ui-border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.moodRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ui-surface-subtle);
+  padding: 9px 12px;
+  border-radius: 8px;
+}
+
+.moodEmoji {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.moodLabel {
+  font-size: 13px;
+  color: var(--ui-text-subtle);
+  font-weight: 500;
+}
+
+.moodLabel strong {
+  font-weight: 700;
+  color: var(--ui-text);
 }
 
 .statusSection,
@@ -4316,7 +4507,42 @@
 .statusTimelineActionsBelow {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
   gap: 8px;
+}
+
+.statusTimelineActionRows {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.statusTimelineActionsTakeRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.statusTimelineActionsLabel {
+  color: var(--ui-text-muted);
+  font-size: 12px !important;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.statusTimelineActionPrimary {
+  border-color: rgba(37, 99, 235, 0.9);
+  background: rgb(37, 99, 235);
+  color: rgb(255, 255, 255) !important;
+}
+
+.statusTimelineActionPrimary:hover:not(:disabled) {
+  border-color: rgb(29, 78, 216);
+  background: rgb(29, 78, 216);
+  color: rgb(255, 255, 255) !important;
 }
 
 .statusTimelineTopline {
@@ -4332,5 +4558,3 @@
   overflow: visible !important;
   overflow-y: visible !important;
 }
-
-
