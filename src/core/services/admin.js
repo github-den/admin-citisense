@@ -1,6 +1,6 @@
 import { supabase } from '@core/lib/supabase.js';
 import { mapPosts } from '@core/utils/postMapper.js';
-import { buildReactionSummaryMap, summarizeMoodFromReactionRows } from '@core/utils/mood.js';
+import { buildReactionSummaryMap, summarizeMoodFromReactionRows, summarizeMoodFromStoredMoodRows, normalizeCityMoodResult } from '@core/utils/mood.js';
 
 const STATUS_TO_DB = {
   'Under Review': 'under_review',
@@ -10,6 +10,8 @@ const STATUS_TO_DB = {
   Resolved: 'resolved',
   Dismissed: 'dismissed',
 };
+
+const VERIFIED_STATUSES = ['In Progress', 'On Hold', 'Resolved'];
 
 function isFiniteLimit(limit) {
   return Number.isFinite(limit) && limit > 0;
@@ -105,22 +107,21 @@ export async function getScopedMoodSummary({ postIds = [], startAt = null, endAt
     return summarizeMoodFromReactionRows([]);
   }
 
+  // Try to compute mood using stored `final_mood` values (matches citizen backend fallback)
   const rows = [];
   await Promise.all(
     chunkItems(postIds).map(async (chunk) => {
       let query = supabase
-        .from('reactions')
-        .select('post_id, emoji, created_at')
-        .in('post_id', chunk);
+        .from('feedbacks')
+        .select('final_mood, created_at')
+        .in('id', chunk);
 
       if (startAt) query = query.gte('created_at', startAt);
       if (endAt) query = query.lte('created_at', endAt);
 
       const { data, error } = await query;
       if (error) {
-        if (!isSchemaMismatch(error)) {
-          console.error('Admin scoped mood fetch failed:', error);
-        }
+        if (!isSchemaMismatch(error)) console.error('Admin scoped mood (stored) fetch failed:', error);
         return;
       }
 
@@ -128,7 +129,109 @@ export async function getScopedMoodSummary({ postIds = [], startAt = null, endAt
     }),
   );
 
-  return summarizeMoodFromReactionRows(rows);
+  if (!rows.length) {
+    // Fallback to reactions summarizer if there are no stored mood rows
+    const reactionRows = [];
+    await Promise.all(
+      chunkItems(postIds).map(async (chunk) => {
+        let query = supabase
+          .from('reactions')
+          .select('post_id, emoji, created_at')
+          .in('post_id', chunk);
+
+        if (startAt) query = query.gte('created_at', startAt);
+        if (endAt) query = query.lte('created_at', endAt);
+
+        const { data, error } = await query;
+        if (error) {
+          if (!isSchemaMismatch(error)) console.error('Admin scoped mood (reactions) fetch failed:', error);
+          return;
+        }
+
+        reactionRows.push(...(data ?? []));
+      }),
+    );
+
+    return summarizeMoodFromReactionRows(reactionRows, { minTotal: 1, minShare: 0 });
+  }
+
+  const summary = summarizeMoodFromStoredMoodRows(rows ?? [], { minTotal: 1, minShare: 0 });
+  return normalizeCityMoodResult({
+    mood: summary.mood,
+    emoji: summary.emoji,
+    total: summary.total,
+    breakdown: summary.breakdown,
+    confidence: summary.confidence,
+  });
+}
+
+// Returns KPI summary for a scoped set of posts: avg resolution duration (ms), resolutionRate (0-100), satisfactionScore (1-5 or null), totalPosts
+export async function getScopedKpiSummary({ postIds = [], startAt = null, endAt = null } = {}) {
+  if (!supabase || !postIds.length) {
+    return {
+      totalPosts: 0,
+      avgResolutionMs: null,
+      resolutionRate: null,
+      satisfactionScore: null,
+    };
+  }
+
+  // Fetch posts in scope
+  const rows = [];
+  await Promise.all(
+    chunkItems(postIds).map(async (chunk) => {
+      let query = supabase
+        .from('feedbacks')
+        .select('id, status, type, created_at, updated_at, rating, closed_at')
+        .in('id', chunk);
+
+      if (startAt) query = query.gte('created_at', startAt);
+      if (endAt) query = query.lte('created_at', endAt);
+
+      const { data, error } = await query;
+      if (error) {
+        if (!isSchemaMismatch(error)) console.error('Scoped KPI posts fetch failed:', error);
+        return;
+      }
+
+      rows.push(...(data ?? []));
+    }),
+  );
+
+  const postsWithReacts = await attachReactionSummaries(rows);
+
+  const totalPosts = postsWithReacts.length;
+
+  // avg resolution ms
+  const resolvedDurations = postsWithReacts
+    .map((post) => {
+      const createdAt = Date.parse(post.created_at ?? '');
+      const closedAt = Date.parse(post.closed_at ?? post.updated_at ?? '');
+      if (!Number.isFinite(createdAt) || !Number.isFinite(closedAt) || closedAt <= createdAt) return null;
+      return closedAt - createdAt;
+    })
+    .filter(Boolean);
+
+  const avgResolutionMs = resolvedDurations.length
+    ? Math.round(resolvedDurations.reduce((sum, v) => sum + v, 0) / resolvedDurations.length)
+    : null;
+
+  // resolution rate (verified -> resolved) for complaints
+  const complaintPosts = postsWithReacts.filter((p) => String(p.type ?? '').toLowerCase() === 'complaint');
+  const verifiedCount = complaintPosts.filter((post) => VERIFIED_STATUSES.includes(post.status)).length;
+  const resolvedCount = complaintPosts.filter((post) => String(post.status ?? '').toLowerCase() === 'resolved').length;
+  const resolutionRate = verifiedCount ? Math.round((resolvedCount / verifiedCount) * 100) : null;
+
+  // satisfaction: average rating for resolved posts
+  const rated = postsWithReacts.filter((p) => String(p.status ?? '').toLowerCase() === 'resolved' && p.rating != null && Number.isFinite(Number(p.rating)));
+  const satisfactionScore = rated.length ? Number((rated.reduce((s, p) => s + Number(p.rating), 0) / rated.length).toFixed(1)) : null;
+
+  return {
+    totalPosts,
+    avgResolutionMs,
+    resolutionRate,
+    satisfactionScore,
+  };
 }
 
 async function attachReactionSummaries(rows = []) {

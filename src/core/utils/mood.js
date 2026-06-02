@@ -1,6 +1,6 @@
 export const MOOD_KEYS = ['grateful', 'satisfied', 'sad', 'angry'];
-export const PREDICTION_PUBLIC_THRESHOLD = 0.3;
-export const PREDICTION_INTERNAL_THRESHOLD = 0.3;
+export const PREDICTION_PUBLIC_THRESHOLD = 0.0;
+export const PREDICTION_INTERNAL_THRESHOLD = 0.0;
 
 export const MOOD_LABELS = {
   grateful: 'Grateful',
@@ -77,15 +77,13 @@ function resolveTopMood(breakdown, latestByMood = {}) {
   const topMoods = MOOD_KEYS.filter((key) => (breakdown[key] ?? 0) === topCount);
   if (topMoods.length === 1) return { mood: topMoods[0], hasTie: false };
 
-  const ranked = topMoods
-    .map((mood) => ({ mood, latest: latestByMood[mood] ?? null }))
-    .sort((left, right) => (right.latest ?? -1) - (left.latest ?? -1));
+  // Strict priority tie-breaker: angry, sad, grateful, satisfied
+  const PRIORITY = ['angry', 'sad', 'grateful', 'satisfied'];
+  const bestMood = topMoods.reduce((best, current) => 
+    PRIORITY.indexOf(current) < PRIORITY.indexOf(best) ? current : best
+  );
 
-  if (ranked[0]?.latest != null && ranked[0].latest !== ranked[1]?.latest) {
-    return { mood: ranked[0].mood, hasTie: false };
-  }
-
-  return { mood: null, hasTie: true };
+  return { mood: bestMood, hasTie: false };
 }
 
 export function finalizeMoodSummary(breakdownInput, latestByMood = {}, options = {}) {
@@ -107,7 +105,7 @@ export function finalizeMoodSummary(breakdownInput, latestByMood = {}, options =
     };
   }
 
-  const minTotal = Number.isFinite(options.minTotal) ? options.minTotal : 3;
+  const minTotal = Number.isFinite(options.minTotal) ? options.minTotal : 4;
   const minShare = Number.isFinite(options.minShare) ? options.minShare : 0.6;
   const { mood: dominantMood, hasTie } = resolveTopMood(breakdown, latestByMood);
   const confidence = dominantMood ? breakdown[dominantMood] / total : 0;
@@ -176,29 +174,44 @@ export function summarizeMoodFromReactionRows(rows = []) {
   return finalizeMoodSummary(breakdown, latestByMood);
 }
 
-export function summarizeMoodFromPosts(posts = [], options = {}) {
-  const allowPrediction = options.allowPrediction !== false;
+export function summarizeMoodFromStoredMoodRows(rows = [], options = {}) {
+  const moodField = options.moodField ?? 'final_mood';
+  const timeField = options.timeField ?? 'created_at';
   const breakdown = createEmptyMoodBreakdown();
   const latestByMood = {};
+
+  rows.forEach((row) => {
+    const mood = normalizeMood(row?.[moodField]);
+    if (!mood) return;
+
+    breakdown[mood] += 1;
+    const timestamp = toTimestamp(row?.[timeField]);
+    if (timestamp != null) {
+      latestByMood[mood] = Math.max(latestByMood[mood] ?? -1, timestamp);
+    }
+  });
+
+  return finalizeMoodSummary(breakdown, latestByMood, {
+    minTotal: options.minTotal,
+    minShare: options.minShare,
+  });
+}
+
+export function summarizeMoodFromPosts(posts = [], options = {}) {
+  const allowPrediction = options.allowPrediction !== false;
+  const finalBreakdown = createEmptyMoodBreakdown();
+  const finalLatestByMood = {};
   const predictedBreakdown = createEmptyMoodBreakdown();
   const predictedLatestByMood = {};
 
   posts.forEach((post) => {
-    const summary = post?.reactionSummary
-      ?? post?.raw?.reactionSummary
-      ?? (post?.reactBreakdown ? { breakdown: post.reactBreakdown } : null)
-      ?? (post?.raw?.reaction_breakdown ? { breakdown: post.raw.reaction_breakdown } : null);
-
     const timestamp = toTimestamp(post?.updated_at ?? post?.created_at);
-    if (summary?.breakdown) {
-      const normalizedBreakdown = normalizeMoodBreakdown(summary.breakdown);
-      MOOD_KEYS.forEach((key) => {
-        breakdown[key] += normalizedBreakdown[key];
-      });
-
-      const mood = normalizeMood(summary.dominantMood ?? summary.mood);
+    const finalSummary = getFinalMoodSummary(post);
+    if (finalSummary?.mood) {
+      const mood = finalSummary.mood;
+      finalBreakdown[mood] += 1;
       if (mood && timestamp != null) {
-        latestByMood[mood] = Math.max(latestByMood[mood] ?? -1, timestamp);
+        finalLatestByMood[mood] = Math.max(finalLatestByMood[mood] ?? -1, timestamp);
       }
       return;
     }
@@ -212,13 +225,16 @@ export function summarizeMoodFromPosts(posts = [], options = {}) {
     }
   });
 
-  const reactionSummary = finalizeMoodSummary(breakdown, latestByMood);
-  if (reactionSummary.mood || reactionSummary.total > 0) {
-    return reactionSummary;
+  const finalSummary = finalizeMoodSummary(finalBreakdown, finalLatestByMood, {
+    minTotal: options.minTotal,
+    minShare: options.minShare,
+  });
+  if (finalSummary.mood || finalSummary.total > 0) {
+    return finalSummary;
   }
 
   if (!allowPrediction) {
-    return reactionSummary;
+    return finalSummary;
   }
 
   const predictedSummary = finalizeMoodSummary(predictedBreakdown, predictedLatestByMood, {
@@ -233,7 +249,27 @@ export function summarizeMoodFromPosts(posts = [], options = {}) {
     };
   }
 
-  return reactionSummary;
+  return finalSummary;
+}
+
+export function normalizeCityMoodResult(row) {
+  if (!row) return finalizeMoodSummary(createEmptyMoodBreakdown());
+
+  const breakdown = normalizeMoodBreakdown(row.breakdown);
+  const summary = finalizeMoodSummary(breakdown, {}, { minTotal: 1, minShare: 0 });
+  const fallbackMood = normalizeMood(row.mood);
+  const total = Number(row.total ?? summary.total ?? 0);
+  const mood = fallbackMood ?? summary.mood ?? summary.dominantMood ?? null;
+
+  return {
+    mood,
+    label: formatMoodLabel(mood),
+    emoji: getMoodEmoji(mood),
+    total,
+    breakdown,
+    confidence: mood ? Math.max(summary.confidence, Number(row.confidence ?? 0)) : 0,
+    source: total > 0 ? String(row.source ?? 'posts') : 'none',
+  };
 }
 
 function getPredictedFields(post) {
@@ -282,3 +318,15 @@ export function getPredictedMoodSummary(post, minimumConfidence = PREDICTION_PUB
     source: 'prediction',
   };
 }
+
+export function resolveFeedbackMood(post, options = {}) {
+  const minimumConfidence = Number.isFinite(options.minimumConfidence)
+    ? options.minimumConfidence
+    : PREDICTION_PUBLIC_THRESHOLD;
+  const finalSummary = getFinalMoodSummary(post);
+  if (finalSummary) return finalSummary;
+
+  if (options.allowPrediction === false) return null;
+  return getPredictedMoodSummary(post, minimumConfidence);
+}
+

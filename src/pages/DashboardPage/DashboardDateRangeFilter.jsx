@@ -1,31 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
-import { CaretDown, CaretLeft, CaretRight } from '@phosphor-icons/react';
+import { CaretDown, CaretLeft } from '@phosphor-icons/react';
 import Button from '../../components/ui/Button.jsx';
+import DateRangePicker from '../../components/ui/DateRangePicker.jsx';
+import {
+  createCustomAdminDateRange,
+  createPresetAdminDateRange,
+} from '@core/lib/adminDateRange.js';
 import styles from './DashboardDateRangeFilter.module.css';
 
-const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-function isSameMonth(selection, year, month) {
-  return selection?.kind === 'month' && selection.year === year && selection.month === month;
-}
-
-function isFutureMonth(year, month) {
-  const today = new Date();
-  return year > today.getFullYear() || (year === today.getFullYear() && month > today.getMonth());
-}
+const DEFAULT_PRESET_OPTIONS = [
+  { value: 'all', label: 'All time' },
+  { value: '15d', label: 'Last 15 days' },
+  { value: '30d', label: 'Last 30 days' },
+];
 
 export default function DashboardDateRangeFilter({ value, onChange, className = '' }) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState('list');
-  const [viewYear, setViewYear] = useState(() => value?.kind === 'month' ? value.year : new Date().getFullYear());
   const rootRef = useRef(null);
-  const today = new Date();
-
-  useEffect(() => {
-    if (value?.kind === 'month') {
-      setViewYear(value.year);
-    }
-  }, [value]);
+  const selection = value ?? createPresetAdminDateRange('all');
 
   useEffect(() => {
     function handlePointerDown(event) {
@@ -38,8 +31,6 @@ export default function DashboardDateRangeFilter({ value, onChange, className = 
     document.addEventListener('mousedown', handlePointerDown);
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, []);
-
-  const canGoNextYear = viewYear < today.getFullYear();
 
   return (
     <div className={styles.root} ref={rootRef}>
@@ -56,7 +47,7 @@ export default function DashboardDateRangeFilter({ value, onChange, className = 
           });
         }}
       >
-        Date Range
+        Select date range
         <CaretDown size={12} weight="bold" />
       </Button>
 
@@ -64,45 +55,27 @@ export default function DashboardDateRangeFilter({ value, onChange, className = 
         <div className={styles.panel}>
           {view === 'list' ? (
             <div className={styles.list}>
+              {DEFAULT_PRESET_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`${styles.item} ${selection.kind === 'preset' && selection.value === option.value ? styles.itemActive : ''}`}
+                  onClick={() => {
+                    onChange(createPresetAdminDateRange(option.value));
+                    setOpen(false);
+                    setView('list');
+                  }}
+                >
+                  {option.label}
+                </button>
+              ))}
+
               <button
                 type="button"
-                className={`${styles.item} ${value?.kind === 'preset' && value.value === 'all' ? styles.itemActive : ''}`}
-                onClick={() => {
-                  onChange({ kind: 'preset', value: 'all' });
-                  setOpen(false);
-                  setView('list');
-                }}
+                className={`${styles.item} ${selection.kind === 'custom' ? styles.itemActive : ''}`}
+                onClick={() => setView('custom')}
               >
-                All time
-              </button>
-              <button
-                type="button"
-                className={`${styles.item} ${value?.kind === 'preset' && value.value === '15d' ? styles.itemActive : ''}`}
-                onClick={() => {
-                  onChange({ kind: 'preset', value: '15d' });
-                  setOpen(false);
-                  setView('list');
-                }}
-              >
-                Last 15 days
-              </button>
-              <button
-                type="button"
-                className={`${styles.item} ${value?.kind === 'preset' && value.value === '30d' ? styles.itemActive : ''}`}
-                onClick={() => {
-                  onChange({ kind: 'preset', value: '30d' });
-                  setOpen(false);
-                  setView('list');
-                }}
-              >
-                Last 30 days
-              </button>
-              <button
-                type="button"
-                className={`${styles.item} ${value?.kind === 'month' ? styles.itemActive : ''}`}
-                onClick={() => setView('month')}
-              >
-                Select a month
+                Select date range
               </button>
             </div>
           ) : (
@@ -116,48 +89,25 @@ export default function DashboardDateRangeFilter({ value, onChange, className = 
                 >
                   <CaretLeft size={14} weight="bold" />
                 </button>
-                <span className={styles.monthLabel}>{viewYear}</span>
-                <div className={styles.yearNavGroup}>
-                  <button
-                    type="button"
-                    className={styles.navBtn}
-                    onClick={() => setViewYear((current) => current - 1)}
-                    aria-label="Previous year"
-                  >
-                    <CaretLeft size={14} weight="bold" />
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.navBtn}
-                    onClick={() => setViewYear((current) => current + 1)}
-                    disabled={!canGoNextYear}
-                    aria-label="Next year"
-                  >
-                    <CaretRight size={14} weight="bold" />
-                  </button>
-                </div>
+                <span className={styles.monthLabel}>Select date range</span>
+                <div className={styles.yearNavGroup} aria-hidden="true" />
               </div>
 
-              <div className={styles.monthGrid}>
-                {MONTH_SHORT.map((label, month) => {
-                  const currentMonth = today.getFullYear() === viewYear && today.getMonth() === month;
-                  return (
-                    <button
-                      key={`${viewYear}-${label}`}
-                      type="button"
-                      disabled={isFutureMonth(viewYear, month)}
-                      className={`${styles.monthCell} ${isSameMonth(value, viewYear, month) ? styles.monthCellActive : ''} ${currentMonth && !isSameMonth(value, viewYear, month) ? styles.monthCellCurrent : ''}`}
-                      onClick={() => {
-                        onChange({ kind: 'month', year: viewYear, month });
-                        setOpen(false);
-                        setView('list');
-                      }}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
+              <DateRangePicker
+                inline
+                embedded
+                value={selection.kind === 'custom' ? selection : { start: null, end: null }}
+                onChange={(nextRange) => {
+                  onChange(createCustomAdminDateRange(nextRange.start, nextRange.end));
+                }}
+                onComplete={(nextRange) => {
+                  if ((nextRange.start && nextRange.end) || (!nextRange.start && !nextRange.end)) {
+                    setOpen(false);
+                    setView('list');
+                  }
+                }}
+                placeholder="Select date range"
+              />
             </div>
           )}
         </div>

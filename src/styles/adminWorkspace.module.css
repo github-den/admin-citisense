@@ -461,7 +461,7 @@
 
 .kpiValue {
   display: block;
-  font-size: 34px;
+  font-size: 28px;
   line-height: 1;
   font-weight: 950;
   letter-spacing: -0.05em;
@@ -469,10 +469,35 @@
 }
 
 .kpiValueLabel {
-  color: var(--ui-text);
+  color: var(--ui-text-muted);
   font-size: 14px;
   line-height: 1.45;
-  font-weight: 500;
+  font-weight: 700;
+}
+
+.kpiValueMood {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.kpiMoodEmoji {
+  font-size: 1em;
+  line-height: 1;
+}
+
+.kpiMoodText {
+  font-size: 1em;
+  line-height: 1;
+}
+
+.kpiHeroEmoji {
+  font-size: 42px;
+  line-height: 1;
 }
 
 .chartGrid {
@@ -659,6 +684,83 @@
 .dashboardDonutLegendValue {
   color: var(--ui-text);
   font-weight: 700;
+}
+
+.dashboardStackedTooltip {
+  min-width: 190px;
+  padding: 14px 15px 12px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(12px);
+}
+
+.dashboardStackedTooltipHeader {
+  display: grid;
+  gap: 2px;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.dashboardStackedTooltipTitle {
+  color: var(--ui-text);
+  font-size: 14px;
+  line-height: 1.3;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.dashboardStackedTooltipSubtitle {
+  color: var(--ui-text-muted);
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.dashboardStackedTooltipRows {
+  display: grid;
+  gap: 8px;
+}
+
+.dashboardStackedTooltipRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dashboardStackedTooltipLabelWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dashboardStackedTooltipSwatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--tooltip-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tooltip-color) 12%, white);
+  flex: 0 0 auto;
+}
+
+.dashboardStackedTooltipLabel {
+  color: var(--ui-text-muted);
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 700;
+}
+
+.dashboardStackedTooltipValue {
+  color: var(--ui-text);
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 900;
 }
 
 .dashboardFunnelBody,

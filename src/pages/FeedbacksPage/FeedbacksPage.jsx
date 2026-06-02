@@ -28,7 +28,7 @@ import {
   scopePostsToWorkspace,
 } from '@core/lib/adminWorkspace.js';
 import { createPresetAdminDateRange, isDefaultAdminDateRange } from '@core/lib/adminDateRange.js';
-import { exportRowsToCsv, exportRowsToXlsx } from '@core/lib/exporters.js';
+import { exportRowsToXlsx } from '@core/lib/exporters.js';
 import { lockPageScroll } from '@core/utils/lockPageScroll.js';
 import { formatCount, formatTime as formatRelativeTime } from '@core/utils/format.js';
 import { showToast } from '../../components/Toast/Toast.jsx';
@@ -1856,17 +1856,15 @@ export default function FeedbacksPage() {
     try {
       const rows = await resolveExportPosts(scope);
       const exportRows = buildExportRows(rows);
-      const filename = `feedbacks-${scope}.${format}`;
-      const success = format === 'csv'
-        ? exportRowsToCsv(filename, exportRows)
-        : exportRowsToXlsx(filename, exportRows, 'Feedbacks');
+      const filename = `feedbacks-${scope}.xlsx`;
+      const success = exportRowsToXlsx(filename, exportRows, 'Feedbacks');
 
       if (!success) {
         showToast('No feedback records are available to export.', 'warning');
         return;
       }
 
-      showToast(`Feedback export generated as ${format.toUpperCase()}.`, 'success');
+      showToast('Feedback export generated as EXCEL.', 'success');
     } catch (error) {
       showToast(error?.message ?? 'Unable to prepare the export right now.', 'error');
     }
@@ -1908,24 +1906,21 @@ export default function FeedbacksPage() {
       key: 'export-all',
       label: 'All',
       items: [
-        { key: 'export-all-csv', label: 'CSV', onClick: () => handleExport('all', 'csv') },
-        { key: 'export-all-xlsx', label: 'XLSX', onClick: () => handleExport('all', 'xlsx') },
+        { key: 'export-all-xlsx', label: 'EXCEL', onClick: () => handleExport('all', 'xlsx') },
       ],
     },
     {
       key: 'export-current',
       label: 'Current page',
       items: [
-        { key: 'export-current-csv', label: 'CSV', onClick: () => handleExport('current', 'csv') },
-        { key: 'export-current-xlsx', label: 'XLSX', onClick: () => handleExport('current', 'xlsx') },
+        { key: 'export-current-xlsx', label: 'EXCEL', onClick: () => handleExport('current', 'xlsx') },
       ],
     },
     ...(selectedPosts.length ? [{
       key: 'export-selected',
       label: 'Selected',
       items: [
-        { key: 'export-selected-csv', label: 'CSV', onClick: () => handleExport('selected', 'csv') },
-        { key: 'export-selected-xlsx', label: 'XLSX', onClick: () => handleExport('selected', 'xlsx') },
+        { key: 'export-selected-xlsx', label: 'EXCEL', onClick: () => handleExport('selected', 'xlsx') },
       ],
     }] : []),
   ];

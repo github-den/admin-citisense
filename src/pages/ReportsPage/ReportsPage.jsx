@@ -16,7 +16,7 @@ import {
   isDefaultAdminDateRange,
   matchesAdminDateRange,
 } from '@core/lib/adminDateRange.js';
-import { exportRowsToCsv, exportSectionsToPrint } from '@core/lib/exporters.js';
+import { exportSectionsToPrint } from '@core/lib/exporters.js';
 import { normalizeText } from '@core/lib/adminWorkspace.js';
 import { showToast } from '../../components/Toast/Toast.jsx';
 import styles from '../../styles/adminWorkspace.module.css';
@@ -172,38 +172,29 @@ export default function ReportsPage() {
 
   function handleExport(scope, format) {
     const rows = scope === 'current' ? pagedReports : filteredReports;
-    const exportRows = buildExportRows(rows);
-    const filename = `admin-reports-${scope}.${format}`;
-    const success = format === 'csv'
-      ? exportRowsToCsv(filename, exportRows)
-      : exportSectionsToPrint({
-        title: 'Reports Queue',
-        subtitle: `${rows.length} visible reports in the current ${scope === 'current' ? 'page' : 'filter set'}`,
-        sections: rows.slice(0, 16).map((report) => ({
-          heading: `Report ${reportNumbers.get(String(report.id)) ?? '---'} / ${formatReportTypeLabel(report.reported_entity_type)}`,
-          rows: [
-            { label: 'Username', value: report.username ?? 'Unknown user' },
-            { label: 'Reason', value: getReasonLabel(report) },
-            { label: 'Description', value: report.description ?? '' },
-            { label: 'Created', value: formatReportDate(report.created_at) },
-          ],
-        })),
-      });
+    const success = exportSectionsToPrint({
+      title: 'Reports Queue',
+      subtitle: `${rows.length} visible reports in the current ${scope === 'current' ? 'page' : 'filter set'}`,
+      sections: rows.slice(0, 16).map((report) => ({
+        heading: `Report ${reportNumbers.get(String(report.id)) ?? '---'} / ${formatReportTypeLabel(report.reported_entity_type)}`,
+        rows: [
+          { label: 'Username', value: report.username ?? 'Unknown user' },
+          { label: 'Reason', value: getReasonLabel(report) },
+          { label: 'Description', value: report.description ?? '' },
+          { label: 'Created', value: formatReportDate(report.created_at) },
+        ],
+      })),
+    });
 
     if (!success) {
       showToast(
-        format === 'csv'
-          ? 'No report records are available to export.'
-          : 'Allow pop-ups first so the printable export can open.',
+        'Allow pop-ups first so the printable export can open.',
         'warning',
       );
       return;
     }
 
-    showToast(
-      format === 'csv' ? 'Reports export generated as CSV.' : 'Printable reports export opened in a new window.',
-      'success',
-    );
+      showToast('Printable reports export opened in a new window.', 'success');
   }
 
   function dismissReport(report) {
@@ -236,7 +227,7 @@ export default function ReportsPage() {
       key: 'export-all',
       label: 'All',
       items: [
-        { key: 'export-all-csv', label: 'CSV', onClick: () => handleExport('all', 'csv') },
+        { key: 'export-all-xlsx', label: 'EXCEL', onClick: () => handleExport('all', 'xlsx') },
         { key: 'export-all-pdf', label: 'PDF', onClick: () => handleExport('all', 'pdf') },
       ],
     },
@@ -244,7 +235,7 @@ export default function ReportsPage() {
       key: 'export-current',
       label: 'Current page',
       items: [
-        { key: 'export-current-csv', label: 'CSV', onClick: () => handleExport('current', 'csv') },
+        { key: 'export-current-xlsx', label: 'EXCEL', onClick: () => handleExport('current', 'xlsx') },
         { key: 'export-current-pdf', label: 'PDF', onClick: () => handleExport('current', 'pdf') },
       ],
     },

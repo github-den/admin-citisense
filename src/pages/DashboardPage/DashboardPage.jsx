@@ -24,8 +24,8 @@ import {
   normalizeText,
   scopePostsToWorkspace,
 } from '@core/lib/adminWorkspace.js';
-import { getScopedMoodSummary } from '@core/services/admin.js';
-import { exportRowsToCsv, exportRowsToXlsx, exportSectionsToPrint } from '@core/lib/exporters.js';
+import { getScopedMoodSummary, getScopedKpiSummary } from '@core/services/admin.js';
+import { exportRowsToXlsx, exportSectionsToPrint } from '@core/lib/exporters.js';
 import { showToast } from '../../components/Toast/Toast.jsx';
 import styles from '../../styles/adminWorkspace.module.css';
 
@@ -52,11 +52,20 @@ const PERFORMANCE_METRIC_OPTIONS = [
 const COMPLAINT_REVIEW_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 
 function getDashboardDateRangeLabel(selection) {
-  if (selection?.kind === 'month') {
-    return new Date(selection.year, selection.month, 1).toLocaleDateString('en-PH', {
-      month: 'long',
+  if (selection?.kind === 'custom') {
+    const formatDate = (date) => date.toLocaleDateString('en-PH', {
+      month: 'short',
+      day: 'numeric',
       year: 'numeric',
     });
+
+    if (selection.start && selection.end) {
+      return `${formatDate(selection.start)} - ${formatDate(selection.end)}`;
+    }
+
+    if (selection.start) {
+      return formatDate(selection.start);
+    }
   }
 
   if (selection?.kind === 'preset') {
@@ -89,12 +98,16 @@ function getReactionDateWindow(selection) {
     };
   }
 
-  if (selection.kind === 'month') {
-    const start = new Date(selection.year, selection.month, 1, 0, 0, 0, 0);
-    const end = new Date(selection.year, selection.month + 1, 0, 23, 59, 59, 999);
+  if (selection.kind === 'custom') {
+    const start = selection.start ? new Date(selection.start) : null;
+    const end = selection.end ? new Date(selection.end) : null;
+
+    if (start) start.setHours(0, 0, 0, 0);
+    if (end) end.setHours(23, 59, 59, 999);
+
     return {
-      startAt: start.toISOString(),
-      endAt: end.toISOString(),
+      startAt: start ? start.toISOString() : null,
+      endAt: end ? end.toISOString() : null,
     };
   }
 
@@ -115,12 +128,19 @@ function filterPostsByDashboardDateRange(posts, selection) {
     });
   }
 
-  if (selection.kind === 'month') {
+  if (selection.kind === 'custom') {
+    const start = selection.start ? new Date(selection.start) : null;
+    const end = selection.end ? new Date(selection.end) : null;
+
+    if (start) start.setHours(0, 0, 0, 0);
+    if (end) end.setHours(23, 59, 59, 999);
+
     return posts.filter((post) => {
       const timestamp = Date.parse(post?.created_at ?? '');
       if (!Number.isFinite(timestamp)) return false;
-      const date = new Date(timestamp);
-      return date.getFullYear() === selection.year && date.getMonth() === selection.month;
+      if (start && timestamp < start.getTime()) return false;
+      if (end && timestamp > end.getTime()) return false;
+      return true;
     });
   }
 
@@ -151,6 +171,59 @@ function formatDuration(ms) {
   const days = ms / (24 * 60 * 60 * 1000);
   if (days < 10) return `${days.toFixed(1)} d`;
   return `${Math.round(days)} d`;
+}
+
+// Format an hours-based metric used by the LGU performance UI (e.g. "3h", "2d").
+function formatHourMetric(hours) {
+  if (hours < 24) return `${Math.max(1, Math.round(hours))}h`;
+  return `${Math.max(1, Math.round(hours / 24))}d`;
+}
+
+function formatMsToCompact(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return '--';
+  const hours = ms / 36e5;
+  if (hours < 24) return `${Math.max(1, Math.round(hours))}h`;
+  return `${Math.max(1, Math.round(hours / 24))}d`;
+}
+
+// Derives a compact response time label similar to the citizen LGU performance page.
+// - No responded posts → 'Xh overdue' / 'Xd overdue' (based on avg pending age)
+// - Avg response ≤ 3 days → 'Xh on-time' / 'Xd on-time'
+// - Avg response > 3 days → 'Xh late' / 'Xd late'
+function deriveResponseTimeLabel(posts) {
+  const respondedPosts = posts.filter((p) => p.status && p.status !== 'Under Review');
+
+  if (respondedPosts.length === 0) {
+    const pendingPosts = posts.filter((p) => !p.status || p.status === 'Under Review');
+    if (pendingPosts.length === 0) return '—';
+    const avgAgeHours = pendingPosts.reduce((sum, p) => {
+      const ageMs = Math.max(0, Date.now() - Date.parse(p.created_at ?? ''));
+      return sum + ageMs / (1000 * 60 * 60);
+    }, 0) / pendingPosts.length;
+    return `${formatHourMetric(avgAgeHours)} overdue`;
+  }
+
+  const totalHours = respondedPosts.reduce((sum, post) => {
+    const created = Date.parse(post.created_at ?? '') || Date.now();
+    const responded = post.updated_at ? Date.parse(post.updated_at) : (created + (3 * 24 * 60 * 60 * 1000));
+    const diffHours = Math.max(0, (responded - created) / (1000 * 60 * 60));
+    return sum + diffHours;
+  }, 0);
+
+  const avgHours = totalHours / respondedPosts.length;
+  if (avgHours <= 72) return `${formatHourMetric(avgHours)} on-time`;
+  return `${formatHourMetric(avgHours)} late`;
+}
+
+// Returns average star rating (1-5) from resolved feedbacks that have been rated.
+// Returns a string like '4.2' or null if no ratings exist yet.
+function deriveSatisfactionScore(posts) {
+  const rated = posts.filter(
+    (p) => p.status === 'Resolved' && p.rating != null && Number.isFinite(Number(p.rating))
+  );
+  if (rated.length === 0) return null;
+  const avg = rated.reduce((sum, p) => sum + Number(p.rating), 0) / rated.length;
+  return avg.toFixed(1);
 }
 
 function formatMetricValue(metric, value) {
@@ -262,6 +335,40 @@ function getMoodMetric(summary) {
   };
 }
 
+// Map server-side mood summary to the citizen `deriveFilteredMood` output format.
+function deriveFilteredMoodFromSummary(summary) {
+  if (!summary?.total) {
+    return {
+      icon: '\u{1F636}',
+      label: 'No mood data yet',
+      detail: 'No mood data yet',
+      totalReactions: 0,
+      share: null,
+    };
+  }
+
+  if (!summary.mood) {
+    const pct = Math.round(summary.confidence * 100);
+    return {
+      icon: '\u{1F636}',
+      label: 'Mixed mood',
+      detail: `${pct}% of feedbacks is mixed mood`,
+      totalReactions: summary.total,
+      share: 0,
+    };
+  }
+
+  const pct = Math.round(summary.confidence * 100);
+  const lowerMood = formatMoodLabel(summary.mood).toLowerCase();
+  return {
+    icon: getMoodEmoji(summary.mood),
+    label: formatMoodLabel(summary.mood),
+    detail: `${pct}% of feedbacks is ${lowerMood}`,
+    totalReactions: summary.total,
+    share: pct,
+  };
+}
+
 function buildFeedbacksChart(posts) {
   return [
     { name: 'Complaint', value: posts.filter((post) => normalizeText(post.type) === 'complaint').length, color: TYPE_COLORS.complaint },
@@ -316,6 +423,7 @@ function buildResponseWindowStatus(posts) {
   const now = Date.now();
   const complaints = getComplaintPosts(posts);
   const result = {
+    withinResponse: 0,
     onTime: 0,
     late: 0,
     overdue: 0,
@@ -327,20 +435,35 @@ function buildResponseWindowStatus(posts) {
 
     const deadline = createdAt + COMPLAINT_REVIEW_WINDOW_MS;
     const verificationStatus = deriveVerificationStatus(post.status);
+    const reviewedAt = Date.parse(
+      post.closedAt
+      ?? post.updated_at
+      ?? post.reviewed_at
+      ?? post.verified_at
+      ?? post.resolved_at
+      ?? '',
+    );
 
     if (verificationStatus === 'Under Review') {
-      if (now > deadline) result.overdue += 1;
-      else result.onTime += 1;
+      if (Date.now() > deadline) result.overdue += 1;
+      else result.withinResponse += 1;
       return;
     }
 
-    const reviewedAt = Date.parse(post.closedAt ?? post.updated_at ?? '');
-    if (Number.isFinite(reviewedAt) && reviewedAt > deadline) result.late += 1;
-    else result.onTime += 1;
+    if (Number.isFinite(reviewedAt) && reviewedAt > 0) {
+      if (reviewedAt <= deadline) result.onTime += 1;
+      else result.late += 1;
+      return;
+    }
+
+    // Reviewed statuses should still land in a bucket even if the review timestamp is missing.
+    if (now <= deadline) result.onTime += 1;
+    else result.late += 1;
   });
 
   return [
-    { key: 'on-time', name: 'On time', value: result.onTime, color: '#16a34a' },
+    { key: 'within', name: 'Within response time', value: result.withinResponse, color: '#16a34a' },
+    { key: 'on-time', name: 'On time', value: result.onTime, color: '#2563eb' },
     { key: 'late', name: 'Late', value: result.late, color: '#f59e0b' },
     { key: 'overdue', name: 'Overdue', value: result.overdue, color: '#dc2626' },
   ];
@@ -377,6 +500,71 @@ function renderBarValueLabel({ x, y, width, value }) {
   );
 }
 
+function buildRoundedRectPath(x, y, width, height, [topLeft, topRight, bottomRight, bottomLeft]) {
+  const maxRadius = Math.max(0, Math.min(width / 2, height / 2));
+  const tl = Math.min(Math.max(topLeft, 0), maxRadius);
+  const tr = Math.min(Math.max(topRight, 0), maxRadius);
+  const br = Math.min(Math.max(bottomRight, 0), maxRadius);
+  const bl = Math.min(Math.max(bottomLeft, 0), maxRadius);
+
+  const left = x;
+  const top = y;
+  const right = x + width;
+  const bottom = y + height;
+
+  if (!tl && !tr && !br && !bl) {
+    return `M ${left} ${top} H ${right} V ${bottom} H ${left} Z`;
+  }
+
+  return [
+    `M ${left + tl} ${top}`,
+    `H ${right - tr}`,
+    tr ? `A ${tr} ${tr} 0 0 1 ${right} ${top + tr}` : `L ${right} ${top}`,
+    `V ${bottom - br}`,
+    br ? `A ${br} ${br} 0 0 1 ${right - br} ${bottom}` : `L ${right} ${bottom}`,
+    `H ${left + bl}`,
+    bl ? `A ${bl} ${bl} 0 0 1 ${left} ${bottom - bl}` : `L ${left} ${bottom}`,
+    `V ${top + tl}`,
+    tl ? `A ${tl} ${tl} 0 0 1 ${left + tl} ${top}` : `L ${left} ${top}`,
+    'Z',
+  ].join(' ');
+}
+
+function getStackedVolumeRadius(payload, dataKey) {
+  const complaint = Number(payload?.complaint ?? 0);
+  const suggestion = Number(payload?.suggestion ?? 0);
+  const compliment = Number(payload?.compliment ?? 0);
+  const value = Number(payload?.[dataKey] ?? 0);
+
+  if (value <= 0) return [0, 0, 0, 0];
+
+  const hasComplaint = complaint > 0;
+  const hasSuggestion = suggestion > 0;
+  const hasCompliment = compliment > 0;
+
+  const isFirstPositive =
+    (dataKey === 'complaint' && hasComplaint) ||
+    (dataKey === 'suggestion' && !hasComplaint && hasSuggestion) ||
+    (dataKey === 'compliment' && !hasComplaint && !hasSuggestion && hasCompliment);
+
+  const isLastPositive =
+    (dataKey === 'compliment' && hasCompliment) ||
+    (dataKey === 'suggestion' && !hasCompliment && hasSuggestion) ||
+    (dataKey === 'complaint' && !hasSuggestion && !hasCompliment && hasComplaint);
+
+  if (isFirstPositive && isLastPositive) return [8, 8, 8, 8];
+  if (isFirstPositive) return [8, 0, 0, 8];
+  if (isLastPositive) return [0, 8, 8, 0];
+  return [0, 0, 0, 0];
+}
+
+function renderStackedVolumeSegment(props) {
+  const { x, y, width, height, fill, payload, dataKey } = props;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+
+  return <path d={buildRoundedRectPath(x, y, width, height, getStackedVolumeRadius(payload, dataKey))} fill={fill} />;
+}
+
 function formatDayKey(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -410,12 +598,16 @@ function getDateRangeBounds(selection, posts) {
     return { start, end };
   }
 
-  if (selection?.kind === 'month') {
-    const start = new Date(selection.year, selection.month, 1);
-    const monthEnd = new Date(selection.year, selection.month + 1, 0);
+  if (selection?.kind === 'custom') {
+    const start = selection.start ? new Date(selection.start) : end;
+    const customEnd = selection.end ? new Date(selection.end) : end;
+
+    start.setHours(0, 0, 0, 0);
+    customEnd.setHours(23, 59, 59, 999);
+
     return {
       start,
-      end: monthEnd > end ? end : monthEnd,
+      end: customEnd > end ? end : customEnd,
     };
   }
 
@@ -598,9 +790,9 @@ function DashboardStackedChart({ data, labelKey = 'name' }) {
       <BarChart
         data={data}
         layout="vertical"
-        margin={{ top: 10, right: 30, left: 24, bottom: 0 }}
+        margin={{ top: 8, right: 22, left: 24, bottom: 0 }}
         barGap="-100%"
-        barCategoryGap="26%"
+        barCategoryGap="14%"
       >
         <CartesianGrid strokeDasharray="3 3" stroke="var(--ui-border)" horizontal={false} />
         <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 700 }} />
@@ -613,19 +805,40 @@ function DashboardStackedChart({ data, labelKey = 'name' }) {
           tick={{ fill: '#334155', fontSize: 11, fontWeight: 700 }}
         />
         <Tooltip
-          contentStyle={{
-            borderRadius: 12,
-            border: '1px solid var(--ui-border)',
-            fontSize: 12,
-            boxShadow: '0 8px 22px rgba(15, 23, 42, 0.08)',
+          cursor={{ fill: 'rgba(37, 99, 235, 0.06)' }}
+          content={({ active, payload, label }) => {
+            if (!active || !payload?.length) return null;
+            const row = payload[0]?.payload ?? {};
+            const items = [
+              { key: 'complaint', label: 'Complaint', value: row.complaint ?? 0, color: TYPE_COLORS.complaint },
+              { key: 'suggestion', label: 'Suggestion', value: row.suggestion ?? 0, color: TYPE_COLORS.suggestion },
+              { key: 'compliment', label: 'Compliment', value: row.compliment ?? 0, color: TYPE_COLORS.compliment },
+            ];
+
+            return (
+              <div className={styles.dashboardStackedTooltip}>
+                <div className={styles.dashboardStackedTooltipHeader}>
+                  <span className={styles.dashboardStackedTooltipTitle}>{label}</span>
+                  <span className={styles.dashboardStackedTooltipSubtitle}>Volume breakdown</span>
+                </div>
+                <div className={styles.dashboardStackedTooltipRows}>
+                  {items.map((item) => (
+                    <div key={item.key} className={styles.dashboardStackedTooltipRow}>
+                      <span className={styles.dashboardStackedTooltipLabelWrap}>
+                        <span className={styles.dashboardStackedTooltipSwatch} style={{ '--tooltip-color': item.color }} />
+                        <span className={styles.dashboardStackedTooltipLabel}>{item.label}</span>
+                      </span>
+                      <span className={styles.dashboardStackedTooltipValue}>{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
           }}
         />
-        <Bar dataKey="feedback" fill={TYPE_COLORS.feedback} radius={[0, 6, 6, 0]} opacity={0.18} />
-        <Bar dataKey="complaint" stackId="types" fill={TYPE_COLORS.complaint} radius={[0, 0, 0, 0]} />
-        <Bar dataKey="suggestion" stackId="types" fill={TYPE_COLORS.suggestion} radius={[0, 0, 0, 0]} />
-        <Bar dataKey="compliment" stackId="types" fill={TYPE_COLORS.compliment} radius={[0, 6, 6, 0]}>
-          <LabelList dataKey="feedback" position="right" fill="#64748b" fontSize={11} fontWeight={800} />
-        </Bar>
+        <Bar dataKey="complaint" stackId="types" fill={TYPE_COLORS.complaint} barSize={22} shape={renderStackedVolumeSegment} />
+        <Bar dataKey="suggestion" stackId="types" fill={TYPE_COLORS.suggestion} barSize={22} shape={renderStackedVolumeSegment} />
+        <Bar dataKey="compliment" stackId="types" fill={TYPE_COLORS.compliment} barSize={22} shape={renderStackedVolumeSegment} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -671,33 +884,59 @@ function DashboardDonutChart({ data, activeIndex, onSliceEnter, onSliceLeave }) 
   const activeItem = activeIndex == null ? null : data[activeIndex];
   const centerValue = activeItem ? activeItem.value : total;
   const centerLabel = activeItem ? activeItem.name : 'Total';
+  const centerLabelLines = centerLabel === 'Within response time'
+    ? ['Within', 'response time']
+    : [centerLabel];
 
   return (
     <div className={styles.dashboardDonutWrap}>
       <ResponsiveContainer width="100%" height={260}>
         <PieChart>
-          <Pie
-            data={data}
-            dataKey="value"
-            nameKey="name"
-            cx="50%"
-            cy="50%"
-            innerRadius={70}
-            outerRadius={96}
-            paddingAngle={2}
-            activeIndex={activeIndex ?? undefined}
-            activeShape={renderActiveDonutShape}
-            onMouseEnter={(_, index) => onSliceEnter(index)}
-            onMouseLeave={onSliceLeave}
-            stroke="none"
-          >
-            {data.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
-          </Pie>
+          {data.reduce((s, it) => s + it.value, 0) === 0 ? (
+            // Render an outlined hollow donut so the chart is still visible when all values are zero
+            <Pie
+              data={[{ name: 'empty', value: 1, color: 'transparent' }]}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              innerRadius={70}
+              outerRadius={96}
+              paddingAngle={2}
+              activeIndex={activeIndex ?? undefined}
+              onMouseEnter={(_, index) => onSliceEnter(index)}
+              onMouseLeave={onSliceLeave}
+            >
+              <Cell key="empty" fill="transparent" stroke="var(--ui-accent)" strokeWidth={2} />
+            </Pie>
+          ) : (
+            <Pie
+              data={data}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              innerRadius={70}
+              outerRadius={96}
+              paddingAngle={2}
+              activeIndex={activeIndex ?? undefined}
+              activeShape={renderActiveDonutShape}
+              onMouseEnter={(_, index) => onSliceEnter(index)}
+              onMouseLeave={onSliceLeave}
+              stroke="none"
+            >
+              {data.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
+            </Pie>
+          )}
           <text x="50%" y="46%" textAnchor="middle" dominantBaseline="central" className={styles.dashboardDonutCenterValue}>
             {centerValue}
           </text>
-          <text x="50%" y="58%" textAnchor="middle" dominantBaseline="central" className={styles.dashboardDonutCenterLabel}>
-            {centerLabel}
+          <text x="50%" y="58%" textAnchor="middle" dominantBaseline="middle" className={styles.dashboardDonutCenterLabel}>
+            {centerLabelLines.map((line, index) => (
+              <tspan key={line} x="50%" dy={index === 0 ? 0 : 16}>
+                {line}
+              </tspan>
+            ))}
           </text>
         </PieChart>
       </ResponsiveContainer>
@@ -769,7 +1008,14 @@ export default function DashboardPage() {
     total: 0,
     confidence: 0,
   });
+  const [kpiSummary, setKpiSummary] = useState({
+    totalPosts: 0,
+    avgResolutionMs: null,
+    resolutionRate: null,
+    satisfactionScore: null,
+  });
   const [moodLoading, setMoodLoading] = useState(true);
+  const [kpiLoading, setKpiLoading] = useState(true);
   const [performanceMetric, setPerformanceMetric] = useState('avgResolutionTime');
   const [visibleSeries, setVisibleSeries] = useState({
     feedback: true,
@@ -835,18 +1081,28 @@ export default function DashboardPage() {
     }
 
     setMoodLoading(true);
-    getScopedMoodSummary({ postIds, startAt, endAt })
-      .then((summary) => {
+    setKpiLoading(true);
+
+    Promise.all([
+      getScopedMoodSummary({ postIds, startAt, endAt }),
+      getScopedKpiSummary({ postIds, startAt, endAt }),
+    ])
+      .then(([mood, kpi]) => {
         if (!mounted) return;
-        setMoodSummary(summary);
+        setMoodSummary(mood);
+        setKpiSummary(kpi || { totalPosts: 0, avgResolutionMs: null, resolutionRate: null, satisfactionScore: null });
       })
       .catch((error) => {
-        console.error('Dashboard mood summary failed:', error);
+        console.error('Dashboard scoped summary failed:', error);
         if (!mounted) return;
         setMoodSummary({ mood: null, total: 0, confidence: 0 });
+        setKpiSummary({ totalPosts: 0, avgResolutionMs: null, resolutionRate: null, satisfactionScore: null });
       })
       .finally(() => {
-        if (mounted) setMoodLoading(false);
+        if (mounted) {
+          setMoodLoading(false);
+          setKpiLoading(false);
+        }
       });
 
     return () => {
@@ -866,10 +1122,30 @@ export default function DashboardPage() {
     [stats?.posts],
   );
 
-  const moodMetric = useMemo(() => getMoodMetric(moodSummary), [moodSummary]);
-  const avgResolutionMetric = useMemo(() => getAverageResolutionTime(filteredPosts), [filteredPosts]);
-  const resolutionRateMetric = useMemo(() => getResolutionRate(filteredPosts), [filteredPosts]);
-  const satisfactionRateMetric = useMemo(() => getSatisfactionRate(filteredPosts), [filteredPosts]);
+  const moodMetric = useMemo(() => deriveFilteredMoodFromSummary(moodSummary), [moodSummary]);
+  const avgResolutionMetric = useMemo(() => {
+    if (!filteredPosts.length) {
+      return { value: '-', label: 'No data yet' };
+    }
+    return { value: deriveResponseTimeLabel(filteredPosts), label: 'for responding to feedbacks' };
+  }, [filteredPosts, kpiSummary]);
+
+  const resolutionRateMetric = useMemo(() => {
+    if (Number.isFinite(kpiSummary?.resolutionRate)) {
+      return { value: `${kpiSummary.resolutionRate}%`, label: 'resolved over verified' };
+    }
+    const rate = getResolutionRate(filteredPosts);
+    return { value: rate.value, label: 'resolved over verified' };
+  }, [filteredPosts, kpiSummary]);
+
+  const satisfactionRateMetric = useMemo(() => {
+    if (kpiSummary?.satisfactionScore != null) {
+      return { value: `${kpiSummary.satisfactionScore}/5`, label: 'based on resolved feedbacks' };
+    }
+    const score = deriveSatisfactionScore(filteredPosts);
+    // Match citizen display: always show '/5' even when no rating
+    return { value: `${score ?? '—'}/5`, label: 'based on resolved feedbacks' };
+  }, [filteredPosts, kpiSummary]);
 
   const feedbacksChart = useMemo(() => buildFeedbacksChart(filteredPosts), [filteredPosts]);
   const complaintsChart = useMemo(() => buildComplaintsChart(filteredPosts), [filteredPosts]);
@@ -931,22 +1207,13 @@ export default function DashboardPage() {
     visibleSeries,
   ]);
 
-  function handleCsvExport() {
-    const success = exportRowsToCsv('admin-dashboard-feedback.csv', buildDashboardExportRows(filteredPosts));
-    if (!success) {
-      showToast('No dashboard records are available to export yet.', 'warning');
-      return;
-    }
-    showToast('Dashboard CSV export prepared.', 'success');
-  }
-
-  function handleXlsxExport() {
+  function handleExcelExport() {
     const success = exportRowsToXlsx('admin-dashboard-feedback.xlsx', buildDashboardExportRows(filteredPosts), 'Dashboard');
     if (!success) {
       showToast('No dashboard records are available to export yet.', 'warning');
       return;
     }
-    showToast('Dashboard XLSX export prepared.', 'success');
+    showToast('Dashboard EXCEL export prepared.', 'success');
   }
 
   function handlePdfExport() {
@@ -991,15 +1258,9 @@ export default function DashboardPage() {
       return;
     }
 
-    if (format === 'csv') {
-      exportRowsToCsv(`${filename}.csv`, rows);
-      showToast(`${title} CSV export prepared.`, 'success');
-      return;
-    }
-
     if (format === 'xlsx') {
       exportRowsToXlsx(`${filename}.xlsx`, rows, title);
-      showToast(`${title} XLSX export prepared.`, 'success');
+      showToast(`${title} EXCEL export prepared.`, 'success');
       return;
     }
 
@@ -1017,8 +1278,7 @@ export default function DashboardPage() {
 
   function getChartExportItems(config) {
     return [
-      { key: `${config.filename}-csv`, label: 'CSV', onClick: () => handleChartExport('csv', config) },
-      { key: `${config.filename}-xlsx`, label: 'XLSX', onClick: () => handleChartExport('xlsx', config) },
+      { key: `${config.filename}-xlsx`, label: 'EXCEL', onClick: () => handleChartExport('xlsx', config) },
       { key: `${config.filename}-pdf`, label: 'PDF', onClick: () => handleChartExport('pdf', config) },
     ];
   }
@@ -1069,8 +1329,7 @@ export default function DashboardPage() {
   }
 
   const exportMenuItems = [
-    { key: 'export-csv', label: 'CSV', onClick: handleCsvExport },
-    { key: 'export-xlsx', label: 'XLSX', onClick: handleXlsxExport },
+    { key: 'export-xlsx', label: 'EXCEL', onClick: handleExcelExport },
     { key: 'export-pdf', label: 'PDF', onClick: handlePdfExport },
   ];
 
@@ -1106,7 +1365,7 @@ export default function DashboardPage() {
             <DashboardDateRangeFilter
               value={dateRange}
               onChange={setDateRange}
-              className={`${styles.filterMenuTrigger} ${dateRange.kind === 'month' || dateRange.value !== 'all' ? styles.filterMenuTriggerActive : ''}`}
+              className={`${styles.filterMenuTrigger} ${dateRange.kind === 'custom' || (dateRange.kind === 'preset' && dateRange.value !== 'all') ? styles.filterMenuTriggerActive : ''}`}
             />
             {workspace.isSuperAdmin ? (
               <Menu
@@ -1168,9 +1427,13 @@ export default function DashboardPage() {
               <span className={styles.kpiTitle}>Mood</span>
               <span className={styles.kpiIcon}><SmileyWink size={18} weight="duotone" /></span>
             </div>
-            <strong className={styles.kpiValue}>{loading || moodLoading ? '...' : moodMetric.icon}</strong>
-            <span className={styles.kpiValueLabel}>{loading || moodLoading ? 'Loading mood signal' : moodMetric.label}</span>
-            <span className={styles.kpiMeta}>{loading || moodLoading ? 'Checking current scope reactions' : moodMetric.detail}</span>
+            <strong className={`${styles.kpiValue} ${styles.kpiValueMood}`}>
+              <span className={styles.kpiMoodEmoji}>{loading || moodLoading ? '...' : moodMetric.icon}</span>
+              {loading || moodLoading || !moodMetric.totalReactions ? null : (
+                <span className={styles.kpiMoodText}>{moodMetric.label}</span>
+              )}
+            </strong>
+            <span className={styles.kpiValueLabel}>{loading || moodLoading ? 'Loading mood signal' : moodMetric.detail}</span>
           </article>
 
           <article className={styles.kpiCard}>
@@ -1178,7 +1441,7 @@ export default function DashboardPage() {
               <span className={styles.kpiTitle}>Avg. Resolution Time</span>
               <span className={styles.kpiIcon}><ClockCountdown size={18} weight="duotone" /></span>
             </div>
-            <strong className={styles.kpiValue}>{loading ? '...' : avgResolutionMetric.value}</strong>
+            <strong className={`${styles.kpiValue} ${styles.kpiValueMood}`}>{loading ? '...' : avgResolutionMetric.value}</strong>
             <span className={styles.kpiValueLabel}>{avgResolutionMetric.label}</span>
           </article>
 
@@ -1196,7 +1459,7 @@ export default function DashboardPage() {
               <span className={styles.kpiTitle}>Satisfaction Rate</span>
               <span className={styles.kpiIcon}><StarHalf size={18} weight="duotone" /></span>
             </div>
-            <strong className={styles.kpiValue}>{loading ? '...' : satisfactionRateMetric.value}</strong>
+            <strong className={`${styles.kpiValue} ${styles.kpiValueMood}`}>{loading ? '...' : satisfactionRateMetric.value}</strong>
             <span className={styles.kpiValueLabel}>{satisfactionRateMetric.label}</span>
           </article>
         </div>
