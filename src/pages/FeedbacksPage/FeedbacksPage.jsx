@@ -240,17 +240,6 @@ function getDisplayHandle(value) {
   return normalized.replace(/^@+/, '');
 }
 
-function resolveFeedbackMood(post) {
-  const moodValue = post?.finalMood ?? post?.predictedMood ?? null;
-  const label = formatMoodLabel(moodValue);
-  if (!label) return null;
-
-  return {
-    label,
-    emoji: getMoodEmoji(moodValue),
-  };
-}
-
 function isComplaintFeedback(post) {
   return normalizeText(post?.type) === 'complaint';
 }
