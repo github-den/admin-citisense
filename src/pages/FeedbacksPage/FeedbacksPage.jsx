@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarBlank, CaretDown, ChatsCircle, ChartDonut, Clock, ClockCountdown, DownloadSimple, FlagBanner, HandHeart, Lightbulb, MapPin, Paperclip, PaperPlaneTilt, Smiley, Star, TrayArrowUp, Warning, X } from '@phosphor-icons/react';
+import { CalendarBlank, CaretDown, ChatsCircle, ChartDonut, Clock, ClockCountdown, DownloadSimple, FlagBanner, HandHeart, Lightbulb, MapPin, Paperclip, PaperPlaneTilt, Smiley, Star, Target, TrayArrowUp, Warning, X } from '@phosphor-icons/react';
 import AdminDateRangeFilter from '../../components/ui/AdminDateRangeFilter.jsx';
 import Avatar from '../../components/ui/Avatar.jsx';
 import DataTable from '../../components/DataTable/DataTable.jsx';
@@ -27,12 +27,13 @@ import {
   normalizeText,
   scopePostsToWorkspace,
 } from '@core/lib/adminWorkspace.js';
-import { formatMoodLabel, getMoodEmoji } from '@core/utils/mood.js';
+import { formatMoodLabel, getMoodEmoji, resolveFeedbackMood } from '@core/utils/mood.js';
 import { createPresetAdminDateRange, isDefaultAdminDateRange } from '@core/lib/adminDateRange.js';
 import { exportRowsToXlsx } from '@core/lib/exporters.js';
 import { lockPageScroll } from '@core/utils/lockPageScroll.js';
 import { formatCount, formatTime as formatRelativeTime } from '@core/utils/format.js';
 import { showToast } from '../../components/Toast/Toast.jsx';
+import MarkLocationModal from '../../components/MarkLocationModal/MarkLocationModal.jsx';
 import styles from '../../styles/adminWorkspace.module.css';
 
 const VERIFICATION_OPTIONS = ['All', 'Under Review', 'Verified', 'Dismissed'];
@@ -447,8 +448,9 @@ function getDismissReportItems(post) {
   return [];
 }
 
-function FeedbackDetailsPopover({ post, typeLabel, relativeTime }) {
+function FeedbackDetailsPopover({ post, typeLabel, relativeTime, onViewLocation }) {
   const displayLocation = String(post.location ?? '').trim();
+  const hasLocationCoords = typeof post.latitude === 'number' && typeof post.longitude === 'number';
   const moodSummary = resolveFeedbackMood(post);
 
   return (
@@ -482,7 +484,26 @@ function FeedbackDetailsPopover({ post, typeLabel, relativeTime }) {
           </div>
           <div className={styles.detailsRow}>
             <span>Location of Incident</span>
-            {displayLocation ? <strong>{displayLocation}</strong> : <span className={styles.detailsEmpty}>-</span>}
+            {displayLocation ? (
+              <div className={styles.locationValue}>
+                <strong>{displayLocation}</strong>
+                {hasLocationCoords && onViewLocation && (
+                  <button
+                    type="button"
+                    className={styles.locationMapBtn}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onViewLocation();
+                    }}
+                    aria-label="View location on map"
+                  >
+                    <Target size={16} weight="fill" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <span className={styles.detailsEmpty}>-</span>
+            )}
           </div>
         </div>
       </div>
@@ -491,7 +512,7 @@ function FeedbackDetailsPopover({ post, typeLabel, relativeTime }) {
         <div className={styles.moodSection}>
           <div className={styles.moodRow}>
             <span className={styles.moodEmoji}>{moodSummary.emoji}</span>
-            <span className={styles.moodLabel}>The mood of this feedback is <strong>{moodSummary.label.toLowerCase()}</strong></span>
+            <span className={styles.moodLabel}>The mood of this feedback is most likely <strong>{moodSummary.label.toLowerCase()}</strong></span>
           </div>
         </div>
       ) : null}
@@ -593,10 +614,13 @@ function DiscussionThreadSkeleton() {
 
 function FeedbackDiscussCard({ post }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [locationModalOpen, setLocationModalOpen] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState(null);
   const typeMeta = getTypeMeta(post.type);
   const author = getDisplayHandle(post.handle);
   const relativeTime = formatRelativeTime(post.created_at);
   const inlineStatus = formatInlineComplaintStatus(post);
+  const moodSummary = resolveFeedbackMood(post);
   const mediaUrl = post.imageUrl || post.images?.[0];
   const mediaItems = [post.imageUrl, ...(Array.isArray(post.images) ? post.images : [])]
     .filter((url) => isImage(url) || isVideo(url));
@@ -653,6 +677,14 @@ function FeedbackDiscussCard({ post }) {
                   </span>
                 </>
               ) : null}
+              {moodSummary ? (
+                <>
+                  <span className={styles.metadataSeparator}>&middot;</span>
+                  <span className={styles.moodInline}>
+                    {moodSummary.emoji} {moodSummary.label}
+                  </span>
+                </>
+              ) : null}
               <span className={styles.metadataSeparator}>&middot;</span>
               <Popover
                 align="start"
@@ -661,7 +693,15 @@ function FeedbackDiscussCard({ post }) {
                 panelClassName={styles.detailsPopover}
                 trigger={<button type="button" className={styles.moreButton}>{detailsOpen ? 'less' : 'more'}</button>}
               >
-                <FeedbackDetailsPopover post={post} typeLabel={typeMeta.label} relativeTime={relativeTime} />
+                <FeedbackDetailsPopover 
+                  post={post} 
+                  typeLabel={typeMeta.label} 
+                  relativeTime={relativeTime} 
+                  onViewLocation={() => {
+                    setSelectedLocation({ latitude: post.latitude, longitude: post.longitude });
+                    setLocationModalOpen(true);
+                  }}
+                />
               </Popover>
             </div>
           </div>
@@ -711,6 +751,12 @@ function FeedbackDiscussCard({ post }) {
           </Tooltip>
         </div>
       </div>
+
+      <MarkLocationModal
+        open={locationModalOpen}
+        onClose={() => setLocationModalOpen(false)}
+        initialLocation={selectedLocation}
+      />
     </article>
   );
 }

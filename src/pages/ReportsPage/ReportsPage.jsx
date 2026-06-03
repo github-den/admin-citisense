@@ -287,38 +287,45 @@ export default function ReportsPage() {
       key: 'actions',
       label: 'Actions',
       width: 96,
-      render: (report) => (
-        <div className={styles.actionColumn}>
-          <button
-            type="button"
-            className={styles.actionLink}
-            onClick={() => showToast('Content preview is not connected yet.', 'info', 2500)}
-          >
-            View
-          </button>
-          <button
-            type="button"
-            className={styles.actionLink}
-            onClick={() => setPendingAction({ report, type: 'suspend' })}
-          >
-            Suspend
-          </button>
-          <button
-            type="button"
-            className={styles.actionLink}
-            onClick={() => setPendingAction({ report, type: 'ban' })}
-          >
-            Ban
-          </button>
-          <button
-            type="button"
-            className={styles.actionLink}
-            onClick={() => dismissReport(report)}
-          >
-            Dismiss
-          </button>
-        </div>
-      ),
+      render: (report) => {
+        const normalizedType = normalizeText(report.normalizedType ?? report.reported_entity_type);
+        const isFeedbackReport = normalizedType === 'feedback' || normalizedType === 'post';
+
+        return (
+          <div className={styles.actionColumn}>
+            <button
+              type="button"
+              className={styles.actionLink}
+              onClick={() => showToast('Content preview is not connected yet.', 'info', 2500)}
+            >
+              View
+            </button>
+            <button
+              type="button"
+              className={styles.actionLink}
+              onClick={() => setPendingAction({ report, type: 'suspend' })}
+            >
+              Suspend
+            </button>
+            <button
+              type="button"
+              className={styles.actionLink}
+              onClick={() => setPendingAction({ report, type: 'ban' })}
+            >
+              Ban
+            </button>
+            {isFeedbackReport && (
+              <button
+                type="button"
+                className={styles.actionLink}
+                onClick={() => dismissReport(report)}
+              >
+                Dismiss
+              </button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
